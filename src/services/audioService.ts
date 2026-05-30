@@ -83,7 +83,7 @@ export const AudioService = {
   async stopRecording(): Promise<string> {
     if (!isTauri()) {
       console.warn("Running in standard browser. Simulating stop recording.");
-      return "C:/Users/User/Documents/recordings/voice_2026_mock.wav";
+      return "[BROWSER_PREVIEW_MODE] voice_recording_mock.wav";
     }
 
     try {

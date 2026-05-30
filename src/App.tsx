@@ -163,6 +163,14 @@ function App() {
             />
           </div>
 
+          {/* Browser Preview Mode Warning Banner */}
+          {recordedFilePath.startsWith("[BROWSER_PREVIEW_MODE]") && (
+            <div className="mb-6 p-4 bg-amber-950/20 border border-amber-500/30 rounded-lg text-amber-200 text-xs text-left leading-relaxed">
+              <span className="font-bold block mb-1">⚠️ Browser Preview Mode Active</span>
+              You are currently running the app in a standard web browser. Recording and audio processing are simulated for preview purposes, and **no actual files are written to your physical drive**. To record real audio and save WAV files, please install the Rust toolchain and execute <strong>npm run tauri dev</strong>.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Lọc tiếng ồn & EQ */}
             <div className="flex flex-col justify-between">
