@@ -67,11 +67,13 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const spectrumCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDraggingRef = useRef<boolean>(false);
   const draggingHandleRef = useRef<'start' | 'end' | null>(null);
   const editModeRef = useRef<'trim' | 'cut' | null>(null);
 
   const audioCtxRef   = useRef<AudioContext | null>(null);
+  const analyserNodeRef = useRef<AnalyserNode | null>(null);
   const gainNodeRef   = useRef<GainNode | null>(null);
   const rumbleNodeRef = useRef<BiquadFilterNode | null>(null);
   const hissNodeRef   = useRef<BiquadFilterNode | null>(null);
@@ -105,6 +107,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     return () => {
       audioCtxRef.current?.close();
       audioCtxRef.current = null;
+      analyserNodeRef.current = null;
       gainNodeRef.current = null;
       rumbleNodeRef.current = null;
       hissNodeRef.current = null;
@@ -507,6 +510,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       if (audioRef.current && isPlaying) {
         currentTimeRef.current = audioRef.current.currentTime;
         draw();
+        drawSpectrum();
         animationId = requestAnimationFrame(renderLoop);
       }
     };
@@ -515,12 +519,58 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       animationId = requestAnimationFrame(renderLoop);
     } else {
       draw();
+      drawSpectrum();
     }
 
     return () => {
       cancelAnimationFrame(animationId);
     };
   }, [isPlaying]);
+
+  const drawSpectrum = () => {
+    const canvas = spectrumCanvasRef.current;
+    const analyser = analyserNodeRef.current;
+    if (!canvas || !analyser) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // We don't resize dynamically here for performance, we assume CSS handles layout and we scale it in resize listener.
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteFrequencyData(dataArray);
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw glowing frequency bars
+    const barWidth = (width / bufferLength) * 2.5; // Scale up to fill the space
+    let barHeight;
+    let x = 0;
+
+    for (let i = 0; i < bufferLength; i++) {
+      barHeight = dataArray[i] / 255 * height;
+
+      // Premium styling: Gradient that changes based on frequency (Bass = Purple, Treble = Blue/Cyan)
+      const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
+      gradient.addColorStop(0, 'rgba(124, 58, 237, 0.2)'); // Violet base
+      gradient.addColorStop(1, 'rgba(56, 189, 248, 0.9)'); // Sky blue top
+
+      ctx.fillStyle = gradient;
+      
+      // Slight rounding on top of bars
+      ctx.beginPath();
+      ctx.roundRect(x, height - barHeight, barWidth - 1, barHeight, [2, 2, 0, 0]);
+      ctx.fill();
+
+      x += barWidth;
+      
+      // Stop early if we exceeded width
+      if (x > width) break;
+    }
+  };
 
   // Redraw when waveform data or resize events happen
   useEffect(() => {
@@ -614,8 +664,13 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         comp.release.value   = 0.25;
         compNodeRef.current  = comp;
 
-        // source → rumble(highpass) → hiss(lowpass) → notch50 → notch60 → bass → treble → gain → gate/compressor → speakers
-        source.connect(rumble).connect(hiss).connect(notch50).connect(notch60).connect(bass).connect(treble).connect(gain).connect(comp).connect(ctx.destination);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.85;
+        analyserNodeRef.current = analyser;
+
+        // source → rumble(highpass) → hiss(lowpass) → notch50 → notch60 → bass → treble → gain → gate/compressor → analyser → speakers
+        source.connect(rumble).connect(hiss).connect(notch50).connect(notch60).connect(bass).connect(treble).connect(gain).connect(comp).connect(analyser).connect(ctx.destination);
       }
     }
 
@@ -783,9 +838,9 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
 
       {/* 2. Symmetrical Interactive Waveform Display (High DPI Retina Canvas) */}
-      <div className="w-full relative bg-white dark:bg-slate-900 rounded-sm shadow-sm select-none">
+      <div className="w-full relative bg-white dark:bg-slate-900 rounded-sm shadow-sm select-none flex flex-col">
         {isDecoding && (
-          <div className="absolute inset-0 bg-white/70 dark:bg-slate-950/75 backdrop-blur-[1px] flex items-center justify-center rounded-2xl z-10">
+          <div className="absolute inset-0 bg-white/70 dark:bg-slate-950/75 backdrop-blur-[1px] flex items-center justify-center rounded-sm z-10">
             <div className="flex flex-col items-center gap-2">
               <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Extracting sound waves...</span>
@@ -793,9 +848,10 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
           </div>
         )}
 
+        {/* Main Waveform Canvas */}
         <canvas
           ref={canvasRef}
-          className="w-full h-[150px] block"
+          className="w-full h-[150px] block border-b border-slate-100 dark:border-slate-800"
           style={{ cursor: editMode ? 'col-resize' : 'pointer' }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -803,7 +859,22 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
           onMouseLeave={handleMouseUpOrLeave}
         />
 
-      {/* Timeline drawn on-canvas — no separate JSX div needed */}
+        {/* Frequency Spectrum Analyzer Canvas */}
+        <div className="relative w-full h-[60px] bg-slate-50 dark:bg-slate-950">
+          <canvas
+            ref={spectrumCanvasRef}
+            className="w-full h-full block"
+          />
+          {/* Frequency labels overlay */}
+          <div className="absolute bottom-0 w-full flex justify-between px-2 text-[8px] text-slate-400 dark:text-slate-600 font-medium select-none pb-0.5">
+            <span>20Hz</span>
+            <span>250Hz</span>
+            <span>1kHz</span>
+            <span>4kHz</span>
+            <span>10kHz</span>
+            <span>20kHz</span>
+          </div>
+        </div>
       </div>
 
       {/* Trim range synced to parent via onTrimRangeChange */}
