@@ -76,6 +76,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
   const gainNodeRef   = useRef<GainNode | null>(null);
   const rumbleNodeRef = useRef<BiquadFilterNode | null>(null);
+  const rumbleNode2Ref = useRef<BiquadFilterNode | null>(null);
+  const rumbleNode3Ref = useRef<BiquadFilterNode | null>(null);
   const hissNodeRef   = useRef<BiquadFilterNode | null>(null);
   const notch50NodeRef = useRef<BiquadFilterNode | null>(null);
   const notch60NodeRef = useRef<BiquadFilterNode | null>(null);
@@ -110,6 +112,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       analyserNodeRef.current = null;
       gainNodeRef.current = null;
       rumbleNodeRef.current = null;
+      rumbleNode2Ref.current = null;
+      rumbleNode3Ref.current = null;
       hissNodeRef.current = null;
       notch50NodeRef.current = null;
       notch60NodeRef.current = null;
@@ -157,6 +161,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       
     // Mic EQ Enhancement (Highpass at 85Hz, Lowpass at 9000Hz, Notches at 50Hz/60Hz)
     if (rumbleNodeRef.current) rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
+    if (rumbleNode2Ref.current) rumbleNode2Ref.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
+    if (rumbleNode3Ref.current) rumbleNode3Ref.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
     if (hissNodeRef.current) hissNodeRef.current.frequency.value = filters.micEqEnhancement ? 9000 : 24000;
     if (notch50NodeRef.current) notch50NodeRef.current.frequency.value = filters.micEqEnhancement ? 50 : 24000;
     if (notch60NodeRef.current) notch60NodeRef.current.frequency.value = filters.micEqEnhancement ? 60 : 24000;
@@ -641,6 +647,18 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         rumble.Q.value = 0.707;
         rumbleNodeRef.current = rumble;
 
+        const rumble2 = ctx.createBiquadFilter();
+        rumble2.type = 'highpass';
+        rumble2.frequency.value = filters?.micEqEnhancement ? 85 : 0;
+        rumble2.Q.value = 0.707;
+        rumbleNode2Ref.current = rumble2;
+
+        const rumble3 = ctx.createBiquadFilter();
+        rumble3.type = 'highpass';
+        rumble3.frequency.value = filters?.micEqEnhancement ? 85 : 0;
+        rumble3.Q.value = 0.707;
+        rumbleNode3Ref.current = rumble3;
+
         const hiss = ctx.createBiquadFilter();
         hiss.type = 'lowpass';
         hiss.frequency.value = filters?.micEqEnhancement ? 9000 : 24000;
@@ -684,8 +702,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         analyser.smoothingTimeConstant = 0.85;
         analyserNodeRef.current = analyser;
 
-        // source → rumble(highpass) → hiss(lowpass) → notch50 → notch60 → bass → treble → gain → gate/compressor → analyser → speakers
-        source.connect(rumble).connect(hiss).connect(notch50).connect(notch60).connect(bass).connect(treble).connect(gain).connect(comp).connect(analyser).connect(ctx.destination);
+        // source → rumble1 → rumble2 → rumble3(highpass) → hiss(lowpass) → notch50 → notch60 → bass → treble → gain → gate/compressor → analyser → speakers
+        source.connect(rumble).connect(rumble2).connect(rumble3).connect(hiss).connect(notch50).connect(notch60).connect(bass).connect(treble).connect(gain).connect(comp).connect(analyser).connect(ctx.destination);
       }
     }
 

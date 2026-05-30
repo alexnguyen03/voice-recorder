@@ -228,12 +228,16 @@ impl AudioProcessor for DspEngine {
         
         // Anti-hum / Anti-hiss filters for low-quality mics
         let mut rumble_filter = BiquadFilter::new_bypass();
+        let mut rumble_filter2 = BiquadFilter::new_bypass();
+        let mut rumble_filter3 = BiquadFilter::new_bypass();
         let mut hiss_filter = BiquadFilter::new_bypass();
         let mut notch50_filter = BiquadFilter::new_bypass();
         let mut notch60_filter = BiquadFilter::new_bypass();
 
         if mic_eq_enhancement {
             rumble_filter = BiquadFilter::new_high_pass(sample_rate, 85.0); // Cut sub-rumble below 85Hz
+            rumble_filter2 = BiquadFilter::new_high_pass(sample_rate, 85.0);
+            rumble_filter3 = BiquadFilter::new_high_pass(sample_rate, 85.0);
             hiss_filter = BiquadFilter::new_low_pass(sample_rate, 9000.0);  // Cut high-freq static
             notch50_filter = BiquadFilter::new_notch(sample_rate, 50.0, 10.0); // Kill 50Hz mains hum
             notch60_filter = BiquadFilter::new_notch(sample_rate, 60.0, 10.0); // Kill 60Hz mains hum
@@ -242,8 +246,10 @@ impl AudioProcessor for DspEngine {
         let mut output = Vec::with_capacity(input.len());
         for &sample in input {
             let mut processed = sample;
-            // Clean noise (hum and hiss) first
+            // Clean noise (hum and hiss) first using steep cascaded filters
             processed = rumble_filter.process(processed);
+            processed = rumble_filter2.process(processed);
+            processed = rumble_filter3.process(processed);
             processed = hiss_filter.process(processed);
             processed = notch50_filter.process(processed);
             processed = notch60_filter.process(processed);
