@@ -30,8 +30,15 @@ pub trait AudioProcessor: Send + Sync {
     /// Áp dụng các bộ lọc khử nhiễu (Noise Suppression) trên luồng dữ liệu.
     fn suppress_noise(&self, input: &[f32]) -> Result<Vec<f32>, AppError>;
 
-    /// Tăng độ chi tiết giọng nói bằng cách chỉnh Equalizer (Bass/Treble boost) và Compressor.
-    fn enhance_voice(&self, input: &[f32], bass_boost: f32, treble_boost: f32) -> Result<Vec<f32>, AppError>;
+    /// Tăng độ chi tiết giọng nói bằng cách chỉnh Equalizer (Bass/Treble boost), Volume Boost, và Microphone EQ.
+    fn enhance_voice(
+        &self,
+        input: &[f32],
+        bass_boost: f32,
+        treble_boost: f32,
+        volume_boost: f32,
+        mic_eq_enhancement: bool,
+    ) -> Result<Vec<f32>, AppError>;
 }
 
 /// Trait định nghĩa việc đọc/ghi dữ liệu âm thanh xuống đĩa cứng (File System).

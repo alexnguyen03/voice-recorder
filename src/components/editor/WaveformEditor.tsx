@@ -14,6 +14,10 @@ export interface AudioFilters {
   bassBoost: number;
   /** 0.0–1.0 where 0.5 = neutral (0 dB gain) */
   trebleBoost: number;
+  /** 0.0-1.0 where 0.5 = neutral (1x), 1.0 = +12dB, 0.0 = -12dB */
+  volumeBoost: number;
+  /** Highpass filter at 85Hz to cut off low-quality mic rumble and wind noise */
+  micEqEnhancement: boolean;
   /** Simple gate/compressor noise reduction */
   noiseSuppression: boolean;
 }
@@ -69,6 +73,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
   // Web Audio API graph for non-destructive live preview
   const audioCtxRef   = useRef<AudioContext | null>(null);
+  const gainNodeRef   = useRef<GainNode | null>(null);
+  const rumbleNodeRef = useRef<BiquadFilterNode | null>(null);
   const bassNodeRef   = useRef<BiquadFilterNode | null>(null);
   const trebleNodeRef = useRef<BiquadFilterNode | null>(null);
   const compNodeRef   = useRef<DynamicsCompressorNode | null>(null);
@@ -97,6 +103,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     return () => {
       audioCtxRef.current?.close();
       audioCtxRef.current = null;
+      gainNodeRef.current = null;
+      rumbleNodeRef.current = null;
       bassNodeRef.current = null;
       trebleNodeRef.current = null;
       compNodeRef.current = null;
@@ -132,6 +140,20 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   // Re-apply filter params whenever the filters prop changes
   useEffect(() => {
     if (!filters) return;
+    
+    // Volume Boost (0.0 to 1.0 mapped to 0.25x to 4x)
+    if (gainNodeRef.current) {
+      const vol = filters.volumeBoost ?? 0.5;
+      gainNodeRef.current.gain.value = vol >= 0.5 ? 1.0 + (vol - 0.5) * 6.0 : 0.25 + (vol / 0.5) * 0.75;
+    }
+      
+    // Mic EQ Enhancement (Highpass at 85Hz)
+    if (rumbleNodeRef.current) {
+      // For BiquadFilter highpass, we can toggle it on/off by changing its frequency or type,
+      // but simpler is to just set frequency to 0 to "disable" it, or 85 to enable.
+      rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
+    }
+    
     // Bass: lowshelf at 200 Hz, 0.5 = 0 dB, range ±15 dB
     if (bassNodeRef.current)
       bassNodeRef.current.gain.value = (filters.bassBoost - 0.5) * 30;
@@ -538,6 +560,17 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         audioCtxRef.current = ctx;
 
         const source = ctx.createMediaElementSource(audioRef.current);
+        
+        const gain = ctx.createGain();
+        const vol = filters?.volumeBoost ?? 0.5;
+        gain.gain.value = vol >= 0.5 ? 1.0 + (vol - 0.5) * 6.0 : 0.25 + (vol / 0.5) * 0.75;
+        gainNodeRef.current = gain;
+        
+        const rumble = ctx.createBiquadFilter();
+        rumble.type = 'highpass';
+        rumble.frequency.value = filters?.micEqEnhancement ? 85 : 0;
+        rumble.Q.value = 0.707;
+        rumbleNodeRef.current = rumble;
 
         const bass = ctx.createBiquadFilter();
         bass.type = 'lowshelf';
@@ -559,8 +592,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         comp.release.value   = 0.25;
         compNodeRef.current  = comp;
 
-        // source → bass → treble → gate/compressor → speakers
-        source.connect(bass).connect(treble).connect(comp).connect(ctx.destination);
+        // source → rumble(highpass) → bass → treble → gain → gate/compressor → speakers
+        source.connect(rumble).connect(bass).connect(treble).connect(gain).connect(comp).connect(ctx.destination);
       }
     }
 

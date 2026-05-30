@@ -12,6 +12,8 @@ interface VoiceDetailStudioProps {
     enable_noise_suppression: boolean;
     bass_boost: number;
     treble_boost: number;
+    volume_boost: number;
+    mic_eq_enhancement: boolean;
   }) => Promise<void>;
   statusMessage: string;
 }
@@ -32,14 +34,16 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
 
   // Filter state — live preview via Web Audio API, never writes to original file
   const [noiseSuppression, setNoiseSuppression] = useState(false);
+  const [micEqEnhancement, setMicEqEnhancement] = useState(false);
   const [bass, setBass] = useState(0.5);   // 0.5 = neutral
   const [treble, setTreble] = useState(0.5); // 0.5 = neutral
+  const [volume, setVolume] = useState(0.5); // 0.5 = neutral (1x)
   const [showFilters, setShowFilters] = useState(false);
 
-  const filters: AudioFilters = { bassBoost: bass, trebleBoost: treble, noiseSuppression };
-  const isFiltersActive = bass !== 0.5 || treble !== 0.5 || noiseSuppression;
+  const filters: AudioFilters = { bassBoost: bass, trebleBoost: treble, volumeBoost: volume, micEqEnhancement, noiseSuppression };
+  const isFiltersActive = bass !== 0.5 || treble !== 0.5 || volume !== 0.5 || noiseSuppression || micEqEnhancement;
 
-  const resetFilters = () => { setBass(0.5); setTreble(0.5); setNoiseSuppression(false); };
+  const resetFilters = () => { setBass(0.5); setTreble(0.5); setVolume(0.5); setNoiseSuppression(false); setMicEqEnhancement(false); };
 
   // Action mode: null = idle, "trim" = keep selection, "cut" = remove selection
   const [actionMode, setActionMode] = useState<ActionMode>(null);
@@ -53,6 +57,8 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       enable_noise_suppression: noiseSuppression,
       bass_boost: bass,
       treble_boost: treble,
+      volume_boost: volume,
+      mic_eq_enhancement: micEqEnhancement,
     });
   };
 
@@ -259,7 +265,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           )}
         </button>
 
-        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[420px] opacity-100" : "max-h-0 opacity-0"}`}>
+        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[580px] opacity-100" : "max-h-0 opacity-0"}`}>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-sm p-4 flex flex-col gap-4">
 
             {/* Non-destructive notice */}
@@ -268,15 +274,27 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
               Your original file is never modified. Use <em>Export</em> to bake them to a copy.
             </p>
 
-            {/* Noise suppression */}
-            <div className="flex items-center gap-2.5">
-              <input type="checkbox" id="noise-suppression" checked={noiseSuppression}
-                onChange={(e) => setNoiseSuppression(e.target.checked)}
-                className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
-              <label htmlFor="noise-suppression" className="text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none font-medium">
-                Noise Gate (live)
-              </label>
-              <span className="text-[10px] text-slate-400 ml-auto">Full RNNoise on export</span>
+            {/* Noise suppression & Mic EQ (Toggles) */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2.5">
+                <input type="checkbox" id="noise-suppression" checked={noiseSuppression}
+                  onChange={(e) => setNoiseSuppression(e.target.checked)}
+                  className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
+                <label htmlFor="noise-suppression" className="text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none font-medium">
+                  Noise Gate (live)
+                </label>
+                <span className="text-[10px] text-slate-400 ml-auto">Full RNNoise on export</span>
+              </div>
+              
+              <div className="flex items-center gap-2.5">
+                <input type="checkbox" id="mic-eq" checked={micEqEnhancement}
+                  onChange={(e) => setMicEqEnhancement(e.target.checked)}
+                  className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
+                <label htmlFor="mic-eq" className="text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none font-medium">
+                  Low Quality Mic Fix
+                </label>
+                <span className="text-[10px] text-slate-400 ml-auto">Removes rumble & hiss</span>
+              </div>
             </div>
 
             {/* Bass Boost */}
@@ -310,6 +328,23 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
               </div>
               <input type="range" min="0" max="1" step="0.025" value={treble}
                 onChange={(e) => setTreble(Number(e.target.value))}
+                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
+            </div>
+
+            {/* Volume Boost */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Volume Gain</label>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
+                    volume === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
+                  }`}>
+                    {volume === 0.5 ? "1x" : volume > 0.5 ? `${(1.0 + (volume - 0.5) * 6.0).toFixed(1)}x` : `${(0.25 + (volume / 0.5) * 0.75).toFixed(1)}x`}
+                  </span>
+                </div>
+              </div>
+              <input type="range" min="0" max="1" step="0.025" value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
                 className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
             </div>
 

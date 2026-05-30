@@ -81,6 +81,8 @@ pub fn apply_voice_effects(
     enable_noise_suppression: bool,
     bass_boost: f32,
     treble_boost: f32,
+    volume_boost: f32,
+    mic_eq_enhancement: bool,
 ) -> Result<String, String> {
     let storage = LocalStorage::new();
     let dsp = DspEngine::new();
@@ -94,7 +96,13 @@ pub fn apply_voice_effects(
     }
 
     // 3. Apply low-shelf/high-shelf EQ shelving filters based on boosts
-    buffer.samples = dsp.enhance_voice(&buffer.samples, bass_boost, treble_boost).map_err(|e| e.to_string())?;
+    buffer.samples = dsp.enhance_voice(
+        &buffer.samples,
+        bass_boost,
+        treble_boost,
+        volume_boost,
+        mic_eq_enhancement
+    ).map_err(|e| e.to_string())?;
 
     // 4. Save enhanced audio as a distinct, non-destructive file
     let output_path = file_path.replace(".wav", "_enhanced.wav");

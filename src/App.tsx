@@ -173,6 +173,8 @@ function App() {
     enable_noise_suppression: boolean;
     bass_boost: number;
     treble_boost: number;
+    volume_boost: number;
+    mic_eq_enhancement: boolean;
   }) => {
     if (!selectedFile) return;
     setStatusMessage("Exporting with filters...");
@@ -181,6 +183,8 @@ function App() {
         enable_noise_suppression: effects.enable_noise_suppression,
         bass_boost: effects.bass_boost,
         treble_boost: effects.treble_boost,
+        volume_boost: effects.volume_boost,
+        mic_eq_enhancement: effects.mic_eq_enhancement,
       });
       // Non-destructive: stay on the original file, just add the export to library
       setStatusMessage(`Exported: ${getFileName(exportPath)}`);

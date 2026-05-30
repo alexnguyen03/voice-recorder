@@ -17,6 +17,8 @@ export interface VoiceEffectOptions {
   enable_noise_suppression: boolean;
   bass_boost: number; // 0.0 - 1.0
   treble_boost: number; // 0.0 - 1.0
+  volume_boost: number; // 0.0 - 1.0
+  mic_eq_enhancement: boolean;
 }
 
 /**
@@ -194,6 +196,8 @@ export const AudioService = {
         enableNoiseSuppression: options.enable_noise_suppression,
         bassBoost: options.bass_boost,
         trebleBoost: options.treble_boost,
+        volumeBoost: options.volume_boost,
+        micEqEnhancement: options.mic_eq_enhancement,
       });
     } catch (error) {
       console.error("Failed to apply voice effects:", error);

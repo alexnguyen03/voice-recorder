@@ -82,6 +82,30 @@ impl BiquadFilter {
         }
     }
 
+    /// Creates a high-pass biquad filter (for removing low-frequency rumble from cheap mics).
+    fn new_high_pass(sample_rate: f32, cutoff: f32) -> Self {
+        let w0 = 2.0 * PI * cutoff / sample_rate;
+        let q = 0.707; // Butterworth
+        let alpha = w0.sin() / (2.0 * q);
+
+        let b0 = (1.0 + w0.cos()) / 2.0;
+        let b1 = -(1.0 + w0.cos());
+        let b2 = (1.0 + w0.cos()) / 2.0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * w0.cos();
+        let a2 = 1.0 - alpha;
+
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+            x1: 0.0, x2: 0.0,
+            y1: 0.0, y2: 0.0,
+        }
+    }
+
     /// Evaluates biquad equations to process a single sample frame.
     fn process(&mut self, sample: f32) -> f32 {
         let out = self.b0 * sample + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2;
@@ -131,22 +155,53 @@ impl AudioProcessor for DspEngine {
         Ok(output)
     }
 
-    fn enhance_voice(&self, input: &[f32], bass_boost: f32, treble_boost: f32) -> Result<Vec<f32>, AppError> {
+    fn enhance_voice(
+        &self,
+        input: &[f32],
+        bass_boost: f32,
+        treble_boost: f32,
+        volume_boost: f32,
+        mic_eq_enhancement: bool,
+    ) -> Result<Vec<f32>, AppError> {
         // Map 0.0..1.0 parameters to dynamic gains from -12dB up to +12dB
         let bass_gain = (bass_boost - 0.5) * 24.0;
         let treble_gain = (treble_boost - 0.5) * 24.0;
+        
+        // Map volume_boost (0.0..1.0) to linear gain multiplier.
+        // 0.5 = 1x (neutral), 1.0 = 4x (+12dB), 0.0 = 0.25x (-12dB)
+        let linear_gain = if volume_boost >= 0.5 {
+            1.0 + (volume_boost - 0.5) * 6.0 // up to 4x
+        } else {
+            0.25 + (volume_boost / 0.5) * 0.75 // down to 0.25x
+        };
 
         let sample_rate = 44100.0;
         let mut bass_filter = BiquadFilter::new_low_shelf(sample_rate, 200.0, bass_gain);
         let mut treble_filter = BiquadFilter::new_high_shelf(sample_rate, 5000.0, treble_gain);
+        
+        // High-pass filter at 85Hz to cut off low-quality mic rumble and wind noise
+        let mut rumble_filter = if mic_eq_enhancement {
+            BiquadFilter::new_high_pass(sample_rate, 85.0)
+        } else {
+            BiquadFilter::new_bypass()
+        };
 
         let mut output = Vec::with_capacity(input.len());
         for &sample in input {
             let mut processed = sample;
+            // Clean rumble first
+            processed = rumble_filter.process(processed);
             // Warm the voice frequencies
             processed = bass_filter.process(processed);
             // Boost crisp vocal clarity
             processed = treble_filter.process(processed);
+            // Apply volume boost
+            processed *= linear_gain;
+            
+            // Hard clipping to prevent integer overflow wrap-around in PCM output
+            if processed > 1.0 { processed = 1.0; }
+            if processed < -1.0 { processed = -1.0; }
+            
             output.push(processed);
         }
 
