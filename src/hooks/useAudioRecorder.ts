@@ -15,8 +15,8 @@ export interface UseAudioRecorderReturn {
 }
 
 /**
- * Custom hook quản lý trạng thái ghi âm và tương tác với AudioService.
- * Giúp cô lập React components khỏi logic quản lý state và gọi service.
+ * Custom hook to manage recording state and interact with AudioService.
+ * Isolates React components from state management and direct service calls.
  */
 export const useAudioRecorder = (): UseAudioRecorderReturn => {
   const [isRecording, setIsRecording] = useState(false);
@@ -26,7 +26,7 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Tải danh sách thiết bị khi khởi tạo
+  // Fetch available devices on mount
   useEffect(() => {
     const fetchDevices = async () => {
       setLoading(true);
@@ -40,7 +40,7 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
           setSelectedDeviceId(list[0].id);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Không thể lấy danh sách microphone");
+        setError(err instanceof Error ? err.message : "Unable to retrieve microphone list");
       } finally {
         setLoading(false);
       }
@@ -61,13 +61,13 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
         const config: RecordConfig = {
           device_id: selectedDeviceId || null,
           sample_rate: sampleRate,
-          channels: 1, // Mặc định Mono cho giọng nói
+          channels: 1, // Default Mono for speech recording
           bit_depth: 16,
         };
         await AudioService.startRecording(config);
         setIsRecording(true);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Lỗi khi bắt đầu ghi âm");
+        setError(err instanceof Error ? err.message : "Error starting audio recording");
       } finally {
         setLoading(false);
       }
@@ -84,7 +84,7 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
       setRecordedFilePath(path);
       return path;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Lỗi khi dừng ghi âm");
+      setError(err instanceof Error ? err.message : "Error stopping audio recording");
       return null;
     } finally {
       setLoading(false);

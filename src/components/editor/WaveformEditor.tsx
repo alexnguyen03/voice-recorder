@@ -18,10 +18,10 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({ filePath, onTrim
 
   return (
     <div style={{ padding: "16px", backgroundColor: "#1e293b", borderRadius: "8px", color: "#f8fafc" }}>
-      <h3 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#94a3b8" }}>Đang chỉnh sửa: {filePath}</h3>
+      <h3 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#94a3b8" }}>Editing: {filePath}</h3>
       <div style={{ display: "flex", gap: "16px", marginBottom: "16px" }}>
         <div>
-          <label style={{ display: "block", fontSize: "12px", marginBottom: "4px" }}>Bắt đầu (ms)</label>
+          <label style={{ display: "block", fontSize: "12px", marginBottom: "4px" }}>Start (ms)</label>
           <input
             type="number"
             value={start}
@@ -30,7 +30,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({ filePath, onTrim
           />
         </div>
         <div>
-          <label style={{ display: "block", fontSize: "12px", marginBottom: "4px" }}>Kết thúc (ms)</label>
+          <label style={{ display: "block", fontSize: "12px", marginBottom: "4px" }}>End (ms)</label>
           <input
             type="number"
             value={end}
@@ -51,7 +51,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({ filePath, onTrim
           fontWeight: "bold",
         }}
       >
-        Cắt đoạn đã chọn
+        Trim Selected Area
       </button>
     </div>
   );

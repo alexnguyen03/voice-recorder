@@ -1,0 +1,55 @@
+# AI AGENT RULES & WORKFLOW (.agentrules)
+## Mandatory Instructions for All AI Agents (Antigravity, Claude Code, etc.)
+
+Welcome Agent. To ensure consistency, premium maintainability, and clean architecture, you **MUST** strictly adhere to the following rules when working in this repository.
+
+---
+
+## 1. Initial Behavior (Context Initialization)
+Before proposing any implementation plan or modifying any files, you must:
+1. **Read carefully** the [PROJECT_CONSTITUTION.md](file:///d:/code/voice-recorder/PROJECT_CONSTITUTION.md) to align with the core architectural requirements.
+2. Check the existing `task.md` or `implementation_plan.md` in the artifacts directory to understand the current progress.
+
+---
+
+## 2. Agent Workflow
+
+All complex changes (> 5 lines of code or new file creations) must follow this workflow:
+```mermaid
+graph TD
+    A[Analyze Request] --> B[Read PROJECT_CONSTITUTION.md]
+    B --> C[Create/Update Implementation Plan]
+    C --> D[Request User Approval on Plan]
+    D -->|Approved| E[Create/Update task.md]
+    E --> F[Execute code steps incrementally]
+    F --> G[Run Linters and Tests]
+    G --> H[Update Walkthrough & Close Tasks]
+```
+
+---
+
+## 3. Coding Standards
+
+### A. TypeScript & React
+* **No `any` keyword:** Strictly define types and interfaces for all objects and function signatures.
+* **Separation of UI and Logic (Presentation-Container):**
+  * Presentational UI components (`src/components/`) **must not** contain Tauri `invoke` IPC logic.
+  * Direct IPC triggers must be fully encapsulated inside `src/services/`.
+  * UI state management and service orchestration must live inside custom hooks (`src/hooks/`).
+* **CSS Modules & Variables:** Enforce pure CSS and CSS variables for theming and dark mode. Do not inject arbitrary utility styles.
+
+### B. Rust Backend
+* **Strictly No Unwrap:** Do not use `.unwrap()` or `.expect()`. Handle all errors gracefully with `Result<T, E>`.
+* **Explicit Error Domains:** Use standard error mapping or `thiserror` to map all backend errors to a custom, JSON-serializable `AppError` before returning them over the IPC bridge.
+* **Decoupled Architecture:**
+  * Files in `src-tauri/src/core/` must contain only models and traits. They **must not** import any libraries from `infra/` or third-party audio API wrappers.
+  * Implementation of these traits must reside strictly in `src-tauri/src/infra/`.
+* **Safe Rust by Default:** Avoid writing `unsafe` code blocks unless strictly required for binding with low-level C libraries (like RNNoise) or audio performance optimizations, and make sure it is fully wrapped and safe.
+
+---
+
+## 4. Verification & Testing Rules
+* Before finishing a turn, you must verify that the codebase compiles successfully:
+  * Frontend: Run Type-check `npx tsc --noEmit`.
+  * Backend: Run `cargo check` or `cargo clippy`.
+* Never leave any placeholder code or `// TODO` comments in production file modifications. All implemented code must be fully operational and clean.

@@ -28,40 +28,40 @@ function App() {
     if (isRecording) {
       const path = await stopRecording();
       if (path) {
-        setStatusMessage(`Đã ghi âm thành công: ${path}`);
+        setStatusMessage(`Successfully recorded audio to: ${path}`);
       }
     } else {
-      setStatusMessage("Đang bắt đầu ghi âm...");
+      setStatusMessage("Starting audio recording stream...");
       await startRecording();
       if (!error) {
-        setStatusMessage("Đang ghi âm...");
+        setStatusMessage("Recording live...");
       }
     }
   };
 
   const handleTrim = async (startMs: number, endMs: number) => {
     if (!recordedFilePath) return;
-    setStatusMessage("Đang cắt file âm thanh...");
+    setStatusMessage("Trimming audio file...");
     try {
       const newPath = await AudioService.trimAudio(recordedFilePath, startMs, endMs);
-      setStatusMessage(`Đã cắt file thành công tại: ${newPath}`);
+      setStatusMessage(`Successfully trimmed file to: ${newPath}`);
     } catch (err) {
-      setStatusMessage(`Lỗi cắt file: ${err}`);
+      setStatusMessage(`Trim error: ${err}`);
     }
   };
 
   const handleApplyEffects = async () => {
     if (!recordedFilePath) return;
-    setStatusMessage("Đang áp dụng hiệu ứng lọc nhiễu và tăng độ chi tiết...");
+    setStatusMessage("Applying noise suppression and detail enhancement...");
     try {
       const newPath = await AudioService.applyVoiceEffects(recordedFilePath, {
         enable_noise_suppression: effectsEnabled,
         bass_boost: bass,
         treble_boost: treble,
       });
-      setStatusMessage(`Đã áp dụng hiệu ứng thành công tại: ${newPath}`);
+      setStatusMessage(`Successfully applied effects to: ${newPath}`);
     } catch (err) {
-      setStatusMessage(`Lỗi áp dụng hiệu ứng: ${err}`);
+      setStatusMessage(`Effects error: ${err}`);
     }
   };
 
@@ -71,24 +71,24 @@ function App() {
         <h1 style={{ fontSize: "28px", fontWeight: "bold", color: "#f8fafc", margin: "0 0 8px 0" }}>
           Desktop Voice Recorder
         </h1>
-        <p style={{ color: "#94a3b8", margin: 0 }}>Studio Ghi âm & Khử nhiễu chuyên nghiệp chạy cục bộ</p>
+        <p style={{ color: "#94a3b8", margin: 0 }}>Local-First Studio-Grade Voice Recording & Enhancement</p>
       </header>
 
       {error && (
         <div style={{ padding: "12px 16px", backgroundColor: "#ef444420", border: "1px solid #ef4444", borderRadius: "6px", color: "#fca5a5", marginBottom: "24px", display: "flex", justifyContent: "space-between" }}>
           <span>{error}</span>
-          <button onClick={clearError} style={{ background: "none", border: "none", color: "#fca5a5", cursor: "pointer" }}>Đóng</button>
+          <button onClick={clearError} style={{ background: "none", border: "none", color: "#fca5a5", cursor: "pointer" }}>Close</button>
         </div>
       )}
 
       <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
-        {/* Cột 1: Cấu hình và Điều khiển */}
+        {/* Column 1: Config & Controls */}
         <div style={{ backgroundColor: "#1e293b", padding: "20px", borderRadius: "12px", border: "1px solid #334155" }}>
-          <h2 style={{ fontSize: "16px", color: "#f1f5f9", margin: "0 0 16px 0" }}>Cấu hình thiết bị</h2>
+          <h2 style={{ fontSize: "16px", color: "#f1f5f9", margin: "0 0 16px 0" }}>Device Configuration</h2>
           
           <div style={{ marginBottom: "16px" }}>
             <label style={{ display: "block", fontSize: "12px", color: "#94a3b8", marginBottom: "6px" }}>
-              Microphone đầu vào
+              Input Microphone
             </label>
             <select
               value={selectedDeviceId}
@@ -127,14 +127,14 @@ function App() {
               transition: "background-color 0.2s",
             }}
           >
-            {isRecording ? "Dừng Ghi Âm" : "Bắt Đầu Ghi Âm"}
+            {isRecording ? "Stop Recording" : "Start Recording"}
           </button>
         </div>
 
-        {/* Cột 2: Visualizer & Trạng thái */}
+        {/* Column 2: Waveform Visualizer */}
         <div style={{ backgroundColor: "#1e293b", padding: "20px", borderRadius: "12px", border: "1px solid #334155", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
           <div>
-            <h2 style={{ fontSize: "16px", color: "#f1f5f9", margin: "0 0 16px 0" }}>Trực quan dạng sóng</h2>
+            <h2 style={{ fontSize: "16px", color: "#f1f5f9", margin: "0 0 16px 0" }}>Waveform Visualizer</h2>
             <AudioVisualizer isRecording={isRecording} />
           </div>
           {statusMessage && (
@@ -148,13 +148,13 @@ function App() {
       {recordedFilePath && (
         <section style={{ backgroundColor: "#1e293b", padding: "20px", borderRadius: "12px", border: "1px solid #334155" }}>
           <h2 style={{ fontSize: "18px", color: "#f1f5f9", margin: "0 0 16px 0", borderBottom: "1px solid #334155", paddingBottom: "8px" }}>
-            Xử lý & Chỉnh sửa tệp
+            File Processing & Editing
           </h2>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: "24px" }}>
             {/* Lọc tiếng ồn & EQ */}
             <div>
-              <h3 style={{ fontSize: "14px", color: "#94a3b8", margin: "0 0 12px 0" }}>Bộ lọc chi tiết giọng nói</h3>
+              <h3 style={{ fontSize: "14px", color: "#94a3b8", margin: "0 0 12px 0" }}>Voice Detail Filters</h3>
               
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                 <input
@@ -164,13 +164,13 @@ function App() {
                   onChange={(e) => setEffectsEnabled(e.target.checked)}
                 />
                 <label htmlFor="noise-cancellation" style={{ color: "#f1f5f9", fontSize: "14px", cursor: "pointer" }}>
-                  Bật Khử Nhiễu (RNNoise)
+                  Enable Noise Suppression (RNNoise)
                 </label>
               </div>
 
               <div style={{ marginBottom: "12px" }}>
                 <label style={{ display: "block", fontSize: "12px", color: "#94a3b8", marginBottom: "4px" }}>
-                  Tăng Bass (Độ trầm): {Math.round(bass * 100)}%
+                  Bass Boost: {Math.round(bass * 100)}%
                 </label>
                 <input
                   type="range"
@@ -185,7 +185,7 @@ function App() {
 
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "block", fontSize: "12px", color: "#94a3b8", marginBottom: "4px" }}>
-                  Tăng Treble (Độ chi tiết): {Math.round(treble * 100)}%
+                  Treble Boost: {Math.round(treble * 100)}%
                 </label>
                 <input
                   type="range"
@@ -211,13 +211,13 @@ function App() {
                   cursor: "pointer",
                 }}
               >
-                Áp dụng bộ lọc giọng
+                Apply Voice Filters
               </button>
             </div>
 
             {/* Trình Trim biên tập */}
             <div>
-              <h3 style={{ fontSize: "14px", color: "#94a3b8", margin: "0 0 12px 0" }}>Cắt ghép âm thanh</h3>
+              <h3 style={{ fontSize: "14px", color: "#94a3b8", margin: "0 0 12px 0" }}>Audio Editing & Trimming</h3>
               <WaveformEditor filePath={recordedFilePath} onTrim={handleTrim} />
             </div>
           </div>
