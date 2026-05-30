@@ -20,14 +20,38 @@ export interface VoiceEffectOptions {
 }
 
 /**
- * AudioService đóng vai trò Adapter cô lập React UI khỏi các API cụ thể của Tauri.
- * Hỗ trợ chuyển đổi kiểu dữ liệu và xử lý lỗi đồng bộ.
+ * Helper to check if the application is running inside a native Tauri WebView environment.
+ * If running in a standard web browser, it returns false.
+ */
+const isTauri = (): boolean => {
+  return typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
+};
+
+/**
+ * AudioService acts as an Adapter isolating the React UI from Tauri's IPC details.
+ * It provides browser fallbacks for previewing styling and basic mock interactions.
  */
 export const AudioService = {
   /**
-   * Lấy danh sách microphone khả dụng.
+   * Scans and lists available input microphone devices.
    */
   async listDevices(): Promise<DeviceInfo[]> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Returning mock microphone devices.");
+      return [
+        {
+          id: "mock_mic_1",
+          name: "Mock Built-in Microphone (Browser)",
+          is_default: true,
+        },
+        {
+          id: "mock_mic_2",
+          name: "Mock External USB Microphone (Browser)",
+          is_default: false,
+        },
+      ];
+    }
+
     try {
       return await invoke<DeviceInfo[]>("list_audio_devices");
     } catch (error) {
@@ -37,9 +61,14 @@ export const AudioService = {
   },
 
   /**
-   * Bắt đầu ghi âm với cấu hình đã chọn.
+   * Starts live audio recording stream.
    */
   async startRecording(config: RecordConfig): Promise<void> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating start recording.", config);
+      return;
+    }
+
     try {
       await invoke("start_audio_recording", { config });
     } catch (error) {
@@ -49,9 +78,14 @@ export const AudioService = {
   },
 
   /**
-   * Dừng ghi âm và trả về đường dẫn file âm thanh đã lưu.
+   * Stops live recording stream and saves the raw PCM buffer to disk, returning the saved path.
    */
   async stopRecording(): Promise<string> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating stop recording.");
+      return "C:/Users/User/Documents/recordings/voice_2026_mock.wav";
+    }
+
     try {
       return await invoke<string>("stop_audio_recording");
     } catch (error) {
@@ -61,9 +95,14 @@ export const AudioService = {
   },
 
   /**
-   * Cắt file âm thanh.
+   * Trims the audio file between starting and ending millisecond ranges.
    */
   async trimAudio(filePath: string, startMs: number, endMs: number): Promise<string> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating audio trim.");
+      return filePath.replace(".wav", "_trimmed.wav");
+    }
+
     try {
       return await invoke<string>("trim_audio", { filePath, startMs, endMs });
     } catch (error) {
@@ -73,9 +112,14 @@ export const AudioService = {
   },
 
   /**
-   * Áp dụng hiệu ứng âm thanh (khử nhiễu, EQ).
+   * Applies DSP filters (noise cancellation and EQ boosts) to the audio file.
    */
   async applyVoiceEffects(filePath: string, options: VoiceEffectOptions): Promise<string> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating DSP effects application.");
+      return filePath.replace(".wav", "_enhanced.wav");
+    }
+
     try {
       return await invoke<string>("apply_voice_effects", {
         filePath,
