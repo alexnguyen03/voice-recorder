@@ -4,8 +4,8 @@ pub fn trim_audio(
     start_ms: u32,
     end_ms: u32,
 ) -> Result<String, String> {
-    // BẢN MẪU: Đọc file, cắt dữ liệu PCM theo dải thời gian, và lưu lại file mới.
-    println!("Cắt file: {} từ {}ms đến {}ms", file_path, start_ms, end_ms);
+    // SKELETON: Read file, slice raw PCM buffer by time range, and write new output file.
+    println!("Trimming file: {} from {}ms to {}ms", file_path, start_ms, end_ms);
     Ok(file_path)
 }
 
@@ -16,9 +16,9 @@ pub fn apply_voice_effects(
     bass_boost: f32,
     treble_boost: f32,
 ) -> Result<String, String> {
-    // BẢN MẪU: Gọi DspEngine để lọc nhiễu, chỉnh EQ và lưu đè/lưu mới.
+    // SKELETON: Call DspEngine to suppress noise, apply EQ filters, and save file.
     println!(
-        "Áp dụng hiệu ứng cho {}: Khử nhiễu: {}, Bass: {}, Treble: {}",
+        "Applying effects to {}: Noise Suppression: {}, Bass: {}, Treble: {}",
         file_path, enable_noise_suppression, bass_boost, treble_boost
     );
     Ok(file_path)

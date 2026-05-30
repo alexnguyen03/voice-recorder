@@ -4,7 +4,7 @@ use crate::core::models::{AppError, DeviceInfo, RecordConfig};
 use crate::infra::CpalRecorder;
 use crate::core::traits::AudioRecorder;
 
-// Định nghĩa State chứa Recorder để Tauri quản lý vòng đời
+// State wrapper holding the CpalRecorder to manage its lifecycle via Tauri State
 pub struct RecorderState {
     pub recorder: Mutex<CpalRecorder>,
 }
@@ -36,7 +36,7 @@ pub fn stop_audio_recording(
     let _buffer = recorder.stop_recording()
         .map_err(|e| e.to_string())?;
     
-    // BẢN MẪU: Ở đây sẽ gọi tiếp AudioStorage để lưu file WAV
-    // và trả về đường dẫn file âm thanh đã lưu.
+    // SKELETON: Will chain call AudioStorage to encode and save WAV file,
+    // then return the actual saved absolute file path string.
     Ok("path/to/recorded_voice.wav".to_string())
 }

@@ -1,7 +1,7 @@
 use crate::core::models::{AppError, AudioBuffer, ErrorCode};
 use crate::core::traits::AudioStorage;
 
-/// Hiện thực bộ lưu trữ tập tin âm thanh cục bộ.
+/// Concrete implementation of local audio storage.
 pub struct LocalStorage;
 
 impl LocalStorage {
@@ -12,23 +12,23 @@ impl LocalStorage {
 
 impl AudioStorage for LocalStorage {
     fn save_file(&self, buffer: &AudioBuffer, path: &str) -> Result<(), AppError> {
-        // BẢN MẪU: Sử dụng hound hoặc symphonia để ghi file .wav/.mp3.
+        // SKELETON: Will use hound or symphonia to encode and write WAV/MP3 files.
         if path.is_empty() {
             return Err(AppError {
                 code: ErrorCode::StorageError,
-                message: "Đường dẫn file không được rỗng".to_string(),
+                message: "File path cannot be empty".to_string(),
             });
         }
-        println!("Đang lưu {} mẫu dữ liệu vào {}", buffer.samples.len(), path);
+        println!("Saving {} audio samples to {}", buffer.samples.len(), path);
         Ok(())
     }
 
     fn load_file(&self, path: &str) -> Result<AudioBuffer, AppError> {
-        // BẢN MẪU: Đọc file và chuyển đổi sang PCM Float32.
+        // SKELETON: Will read audio files and convert to standard PCM Float32 buffers.
         if path.is_empty() {
             return Err(AppError {
                 code: ErrorCode::StorageError,
-                message: "Đường dẫn file không được rỗng".to_string(),
+                message: "File path cannot be empty".to_string(),
             });
         }
         Ok(AudioBuffer {

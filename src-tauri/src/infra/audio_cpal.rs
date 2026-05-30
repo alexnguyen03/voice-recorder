@@ -1,7 +1,7 @@
 use crate::core::models::{AppError, AudioBuffer, DeviceInfo, RecordConfig};
 use crate::core::traits::AudioRecorder;
 
-/// Hiện thực hóa bộ ghi âm sử dụng thư viện cpal.
+/// Concrete implementation of AudioRecorder using the cpal crate.
 pub struct CpalRecorder {
     is_recording: bool,
 }
@@ -16,7 +16,7 @@ impl CpalRecorder {
 
 impl AudioRecorder for CpalRecorder {
     fn list_devices(&self) -> Result<Vec<DeviceInfo>, AppError> {
-        // BẢN MẪU: Sẽ được cài đặt chi tiết bằng cpal sau.
+        // SKELETON: Will scan actual audio hardware using cpal later.
         Ok(vec![
             DeviceInfo {
                 id: "default_mic".to_string(),
@@ -27,16 +27,16 @@ impl AudioRecorder for CpalRecorder {
     }
 
     fn start_recording(&mut self, _config: &RecordConfig) -> Result<(), AppError> {
-        // BẢN MẪU: Khởi động luồng thu âm của cpal.
+        // SKELETON: Will initialize and launch the cpal input stream.
         self.is_recording = true;
         Ok(())
     }
 
     fn stop_recording(&mut self) -> Result<AudioBuffer, AppError> {
-        // BẢN MẪU: Dừng luồng và trích xuất dữ liệu.
+        // SKELETON: Will stop the stream and return captured PCM data.
         self.is_recording = false;
         Ok(AudioBuffer {
-            samples: vec![0.0; 1024], // Dữ liệu rỗng giả lập
+            samples: vec![0.0; 1024], // Mock raw PCM buffer data
             sample_rate: 44100,
             channels: 1,
         })
