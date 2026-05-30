@@ -155,8 +155,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       gainNodeRef.current.gain.value = vol >= 0.5 ? 1.0 + (vol - 0.5) * 6.0 : 0.25 + (vol / 0.5) * 0.75;
     }
       
-    // Mic EQ Enhancement (Highpass at 85Hz, Lowpass at 9000Hz, Notches at 50Hz/60Hz)
-    if (rumbleNodeRef.current) rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
+    // Mic EQ Enhancement (Highpass at 20Hz, Lowpass at 9000Hz, Notches at 50Hz/60Hz)
+    if (rumbleNodeRef.current) rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 20 : 0;
     if (hissNodeRef.current) hissNodeRef.current.frequency.value = filters.micEqEnhancement ? 9000 : 24000;
     if (notch50NodeRef.current) notch50NodeRef.current.frequency.value = filters.micEqEnhancement ? 50 : 24000;
     if (notch60NodeRef.current) notch60NodeRef.current.frequency.value = filters.micEqEnhancement ? 60 : 24000;
@@ -622,7 +622,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         
         const rumble = ctx.createBiquadFilter();
         rumble.type = 'highpass';
-        rumble.frequency.value = filters?.micEqEnhancement ? 85 : 0;
+        rumble.frequency.value = filters?.micEqEnhancement ? 20 : 0;
         rumble.Q.value = 0.707;
         rumbleNodeRef.current = rumble;
 
@@ -867,6 +867,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
           />
           {/* Frequency labels overlay */}
           <div className="absolute bottom-0 w-full flex justify-between px-2 text-[8px] text-slate-400 dark:text-slate-600 font-medium select-none pb-0.5">
+            <span>0Hz</span>
             <span>20Hz</span>
             <span>250Hz</span>
             <span>1kHz</span>

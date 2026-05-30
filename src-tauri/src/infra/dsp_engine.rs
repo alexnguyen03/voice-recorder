@@ -233,7 +233,7 @@ impl AudioProcessor for DspEngine {
         let mut notch60_filter = BiquadFilter::new_bypass();
 
         if mic_eq_enhancement {
-            rumble_filter = BiquadFilter::new_high_pass(sample_rate, 85.0); // Cut sub-rumble
+            rumble_filter = BiquadFilter::new_high_pass(sample_rate, 20.0); // Cut sub-rumble below 20Hz
             hiss_filter = BiquadFilter::new_low_pass(sample_rate, 9000.0);  // Cut high-freq static
             notch50_filter = BiquadFilter::new_notch(sample_rate, 50.0, 10.0); // Kill 50Hz mains hum
             notch60_filter = BiquadFilter::new_notch(sample_rate, 60.0, 10.0); // Kill 60Hz mains hum
