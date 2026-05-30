@@ -691,8 +691,10 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     <div className="w-full flex flex-col items-center">
       {/* Hidden audio tag */}
       <audio
+        key={audioUrl}
         ref={audioRef}
         src={audioUrl}
+        crossOrigin="anonymous"
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleAudioEnded}
       />
