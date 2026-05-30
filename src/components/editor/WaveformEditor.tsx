@@ -55,6 +55,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [waveform, setWaveform] = useState<number[]>([]);
   const [isDecoding, setIsDecoding] = useState<boolean>(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
   // Trimming state in milliseconds
   const [startMs, setStartMs] = useState<number>(0);
@@ -99,6 +100,32 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       bassNodeRef.current = null;
       trebleNodeRef.current = null;
       compNodeRef.current = null;
+    };
+  }, [audioUrl]);
+
+  // Fetch audio file into a blob to bypass Tauri CORS restrictions with Web Audio API
+  useEffect(() => {
+    if (!audioUrl) {
+      setBlobUrl(null);
+      return;
+    }
+    
+    let active = true;
+    let currentUrl: string | null = null;
+    
+    fetch(audioUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        if (active) {
+          currentUrl = URL.createObjectURL(blob);
+          setBlobUrl(currentUrl);
+        }
+      })
+      .catch(err => console.error("Failed to load audio blob:", err));
+      
+    return () => {
+      active = false;
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
   }, [audioUrl]);
 
@@ -691,9 +718,9 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     <div className="w-full flex flex-col items-center">
       {/* Hidden audio tag */}
       <audio
-        key={audioUrl}
+        key={blobUrl || "empty"}
         ref={audioRef}
-        src={audioUrl}
+        src={blobUrl || ""}
         crossOrigin="anonymous"
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleAudioEnded}
