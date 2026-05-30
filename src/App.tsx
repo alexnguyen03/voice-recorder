@@ -175,18 +175,18 @@ function App() {
     treble_boost: number;
   }) => {
     if (!selectedFile) return;
-    setStatusMessage("Applying digital filters...");
+    setStatusMessage("Exporting with filters...");
     try {
-      const newPath = await AudioService.applyVoiceEffects(selectedFile, {
+      const exportPath = await AudioService.applyVoiceEffects(selectedFile, {
         enable_noise_suppression: effects.enable_noise_suppression,
         bass_boost: effects.bass_boost,
         treble_boost: effects.treble_boost,
       });
-      setStatusMessage(`Successfully enhanced: ${getFileName(newPath)}`);
-      setSelectedFile(newPath); // Auto-load the enhanced file into the player
+      // Non-destructive: stay on the original file, just add the export to library
+      setStatusMessage(`Exported: ${getFileName(exportPath)}`);
       refreshFiles();
     } catch (err) {
-      setStatusMessage(`Effects error: ${err}`);
+      setStatusMessage(`Export error: ${err}`);
     }
   };
 

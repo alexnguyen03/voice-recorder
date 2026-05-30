@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Scissors, Wand2, ChevronDown, Check, X } from "lucide-react";
-import { WaveformEditor, WaveformEditorHandle } from "../components/editor/WaveformEditor";
+import { ArrowLeft, Scissors, Wand2, ChevronDown, Check, X, RotateCcw, Download } from "lucide-react";
+import { WaveformEditor, WaveformEditorHandle, AudioFilters } from "../components/editor/WaveformEditor";
 
 interface VoiceDetailStudioProps {
   selectedFile: string;
@@ -30,10 +30,16 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const waveformRef = useRef<WaveformEditorHandle>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const [effectsEnabled, setEffectsEnabled] = useState(false);
-  const [bass, setBass] = useState(0.5);
-  const [treble, setTreble] = useState(0.5);
+  // Filter state — live preview via Web Audio API, never writes to original file
+  const [noiseSuppression, setNoiseSuppression] = useState(false);
+  const [bass, setBass] = useState(0.5);   // 0.5 = neutral
+  const [treble, setTreble] = useState(0.5); // 0.5 = neutral
   const [showFilters, setShowFilters] = useState(false);
+
+  const filters: AudioFilters = { bassBoost: bass, trebleBoost: treble, noiseSuppression };
+  const isFiltersActive = bass !== 0.5 || treble !== 0.5 || noiseSuppression;
+
+  const resetFilters = () => { setBass(0.5); setTreble(0.5); setNoiseSuppression(false); };
 
   // Action mode: null = idle, "trim" = keep selection, "cut" = remove selection
   const [actionMode, setActionMode] = useState<ActionMode>(null);
@@ -42,9 +48,9 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
 
-  const handleApplyEffects = () => {
+  const handleExportWithFilters = () => {
     onApplyEffects({
-      enable_noise_suppression: effectsEnabled,
+      enable_noise_suppression: noiseSuppression,
       bass_boost: bass,
       treble_boost: treble,
     });
@@ -104,18 +110,19 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       </div>
 
       {/* ── Waveform ── */}
-      <WaveformEditor
-        ref={waveformRef}
-        filePath={selectedFile}
-        audioUrl={audioUrl}
-        onTrim={onTrim}
-        editMode={actionMode}
-        onPlayStateChange={setIsPlaying}
-        onTrimRangeChange={(start, end) => {
-          setTrimStart(start);
-          setTrimEnd(end);
-        }}
-      />
+        <WaveformEditor
+          ref={waveformRef}
+          filePath={selectedFile}
+          audioUrl={audioUrl}
+          onTrim={onTrim}
+          editMode={actionMode}
+          onPlayStateChange={setIsPlaying}
+          filters={filters}
+          onTrimRangeChange={(start, end) => {
+            setTrimStart(start);
+            setTrimEnd(end);
+          }}
+        />
 {/* Confirm bar — slides in when action is active */}
       <div
         className={`overflow-hidden transition-all duration-200 ease-out ${
@@ -235,8 +242,9 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         </div>
       )}
 
-      {/* ── Voice Filters (collapsible) ── */}
+      {/* ── Voice Filters (non-destructive, collapsible) ── */}
       <div className="mt-3">
+        {/* Toggle row with live badge */}
         <button
           onClick={() => setShowFilters((v) => !v)}
           className="flex items-center gap-2 w-full text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors py-2 select-none"
@@ -244,43 +252,87 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`} />
           <Wand2 className="w-3.5 h-3.5" />
           Voice Filters
+          {isFiltersActive && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-sm bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 text-[10px] font-bold tracking-wide">
+              LIVE PREVIEW
+            </span>
+          )}
         </button>
 
-        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"}`}>
+        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[420px] opacity-100" : "max-h-0 opacity-0"}`}>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-sm p-4 flex flex-col gap-4">
+
+            {/* Non-destructive notice */}
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Filters are applied via <strong>Web Audio API</strong> for live preview only.
+              Your original file is never modified. Use <em>Export</em> to bake them to a copy.
+            </p>
+
+            {/* Noise suppression */}
             <div className="flex items-center gap-2.5">
-              <input type="checkbox" id="noise-cancellation" checked={effectsEnabled}
-                onChange={(e) => setEffectsEnabled(e.target.checked)}
-                className="cursor-pointer w-4 h-4 rounded accent-blue-500" />
-              <label htmlFor="noise-cancellation" className="text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none font-medium">
-                Noise Suppression (RNNoise)
+              <input type="checkbox" id="noise-suppression" checked={noiseSuppression}
+                onChange={(e) => setNoiseSuppression(e.target.checked)}
+                className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
+              <label htmlFor="noise-suppression" className="text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none font-medium">
+                Noise Gate (live)
               </label>
+              <span className="text-[10px] text-slate-400 ml-auto">Full RNNoise on export</span>
             </div>
 
+            {/* Bass Boost */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Bass Boost (Warmth)</label>
-                <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold px-1.5 py-0.5 rounded-sm">{Math.round(bass * 100)}%</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
+                    bass === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
+                  }`}>
+                    {bass === 0.5 ? "Flat" : bass > 0.5 ? `+${Math.round((bass - 0.5) * 30)}dB` : `${Math.round((bass - 0.5) * 30)}dB`}
+                  </span>
+                </div>
               </div>
-              <input type="range" min="0" max="1" step="0.05" value={bass}
+              <input type="range" min="0" max="1" step="0.025" value={bass}
                 onChange={(e) => setBass(Number(e.target.value))}
-                className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
+                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
             </div>
 
+            {/* Treble Boost */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Treble Boost (Clarity)</label>
-                <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold px-1.5 py-0.5 rounded-sm">{Math.round(treble * 100)}%</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
+                    treble === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
+                  }`}>
+                    {treble === 0.5 ? "Flat" : treble > 0.5 ? `+${Math.round((treble - 0.5) * 30)}dB` : `${Math.round((treble - 0.5) * 30)}dB`}
+                  </span>
+                </div>
               </div>
-              <input type="range" min="0" max="1" step="0.05" value={treble}
+              <input type="range" min="0" max="1" step="0.025" value={treble}
                 onChange={(e) => setTreble(Number(e.target.value))}
-                className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
+                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
             </div>
 
-            <button onClick={handleApplyEffects}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 transition-colors rounded-sm text-white font-bold cursor-pointer text-xs shadow-sm">
-              Apply Voice Filters
-            </button>
+            {/* Action row */}
+            <div className="flex gap-2">
+              <button
+                onClick={resetFilters}
+                disabled={!isFiltersActive}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-bold cursor-pointer transition-all active:scale-95 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Reset all filters to flat/neutral"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset
+              </button>
+              <button
+                onClick={handleExportWithFilters}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-sm text-xs font-bold cursor-pointer transition-all active:scale-95 bg-violet-600 hover:bg-violet-500 text-white"
+                title="Bake filters into a new file — original is never modified"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export with Filters
+              </button>
+            </div>
           </div>
         </div>
       </div>

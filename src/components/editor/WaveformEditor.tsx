@@ -8,6 +8,16 @@ export interface WaveformEditorHandle {
   isPlaying: () => boolean;
 }
 
+/** Non-destructive audio filter settings for live Web Audio API preview */
+export interface AudioFilters {
+  /** 0.0–1.0 where 0.5 = neutral (0 dB gain) */
+  bassBoost: number;
+  /** 0.0–1.0 where 0.5 = neutral (0 dB gain) */
+  trebleBoost: number;
+  /** Simple gate/compressor noise reduction */
+  noiseSuppression: boolean;
+}
+
 interface WaveformEditorProps {
   filePath: string;
   audioUrl: string;
@@ -23,6 +33,8 @@ interface WaveformEditorProps {
   editMode?: 'trim' | 'cut' | null;
   /** Fired when play state changes */
   onPlayStateChange?: (playing: boolean) => void;
+  /** Live preview filters applied via Web Audio API — never touches original file */
+  filters?: AudioFilters;
 }
 
 /**
@@ -37,6 +49,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   onTrimRangeChange,
   editMode = null,
   onPlayStateChange,
+  filters,
 }, ref) {
   const [duration, setDuration] = useState<number>(20); // default to 20 seconds
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -52,6 +65,12 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const isDraggingRef = useRef<boolean>(false);
   const draggingHandleRef = useRef<'start' | 'end' | null>(null);
   const editModeRef = useRef<'trim' | 'cut' | null>(null);
+
+  // Web Audio API graph for non-destructive live preview
+  const audioCtxRef   = useRef<AudioContext | null>(null);
+  const bassNodeRef   = useRef<BiquadFilterNode | null>(null);
+  const trebleNodeRef = useRef<BiquadFilterNode | null>(null);
+  const compNodeRef   = useRef<DynamicsCompressorNode | null>(null);
 
   // High-density bar count (180 points for a premium professional look)
   const numBars = 180;
@@ -71,6 +90,33 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   useEffect(() => { endMsRef.current = endMs; }, [endMs]);
   useEffect(() => { isDecodingRef.current = isDecoding; }, [isDecoding]);
   useEffect(() => { editModeRef.current = editMode ?? null; }, [editMode]);
+
+  // Tear down AudioContext when the source file changes
+  useEffect(() => {
+    return () => {
+      audioCtxRef.current?.close();
+      audioCtxRef.current = null;
+      bassNodeRef.current = null;
+      trebleNodeRef.current = null;
+      compNodeRef.current = null;
+    };
+  }, [audioUrl]);
+
+  // Re-apply filter params whenever the filters prop changes
+  useEffect(() => {
+    if (!filters) return;
+    // Bass: lowshelf at 200 Hz, 0.5 = 0 dB, range ±15 dB
+    if (bassNodeRef.current)
+      bassNodeRef.current.gain.value = (filters.bassBoost - 0.5) * 30;
+    // Treble: highshelf at 4 kHz
+    if (trebleNodeRef.current)
+      trebleNodeRef.current.gain.value = (filters.trebleBoost - 0.5) * 30;
+    // Noise gate: use DynamicsCompressor as a simple soft gate
+    if (compNodeRef.current) {
+      compNodeRef.current.threshold.value = filters.noiseSuppression ? -45 : -100;
+      compNodeRef.current.ratio.value     = filters.noiseSuppression ? 16   : 1;
+    }
+  }, [filters]);
 
   // Helper: Format seconds to MM:SS
   const formatTime = (secs: number): string => {
@@ -456,12 +502,52 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   // Playback Control Actions
   const togglePlay = () => {
     if (!audioRef.current) return;
+
+    // Bootstrap Web Audio graph on first play (requires user gesture)
+    if (!audioCtxRef.current) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx() as AudioContext;
+        audioCtxRef.current = ctx;
+
+        const source = ctx.createMediaElementSource(audioRef.current);
+
+        const bass = ctx.createBiquadFilter();
+        bass.type = 'lowshelf';
+        bass.frequency.value = 200;
+        bass.gain.value = filters ? (filters.bassBoost - 0.5) * 30 : 0;
+        bassNodeRef.current = bass;
+
+        const treble = ctx.createBiquadFilter();
+        treble.type = 'highshelf';
+        treble.frequency.value = 4000;
+        treble.gain.value = filters ? (filters.trebleBoost - 0.5) * 30 : 0;
+        trebleNodeRef.current = treble;
+
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = filters?.noiseSuppression ? -45  : -100;
+        comp.ratio.value     = filters?.noiseSuppression ? 16   : 1;
+        comp.knee.value      = 10;
+        comp.attack.value    = 0.003;
+        comp.release.value   = 0.25;
+        compNodeRef.current  = comp;
+
+        // source → bass → treble → gate/compressor → speakers
+        source.connect(bass).connect(treble).connect(comp).connect(ctx.destination);
+      }
+    }
+
+    // Resume suspended context (browser auto-suspend policy)
+    if (audioCtxRef.current?.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
       onPlayStateChange?.(false);
     } else {
-      audioRef.current.play().catch((err) => console.error("Playback error:", err));
+      audioRef.current.play().catch((err) => console.error('Playback error:', err));
       setIsPlaying(true);
       onPlayStateChange?.(true);
     }
