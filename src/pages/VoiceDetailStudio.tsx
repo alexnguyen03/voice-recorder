@@ -104,21 +104,58 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       </div>
 
       {/* ── Waveform ── */}
-      <div className="bg-slate-100 dark:bg-slate-800 rounded-sm p-4">
-        <WaveformEditor
-          ref={waveformRef}
-          filePath={selectedFile}
-          audioUrl={audioUrl}
-          onTrim={onTrim}
-          trimMode={actionMode !== null}
-          onPlayStateChange={setIsPlaying}
-          onTrimRangeChange={(start, end) => {
-            setTrimStart(start);
-            setTrimEnd(end);
-          }}
-        />
+      <WaveformEditor
+        ref={waveformRef}
+        filePath={selectedFile}
+        audioUrl={audioUrl}
+        onTrim={onTrim}
+        editMode={actionMode}
+        onPlayStateChange={setIsPlaying}
+        onTrimRangeChange={(start, end) => {
+          setTrimStart(start);
+          setTrimEnd(end);
+        }}
+      />
+{/* Confirm bar — slides in when action is active */}
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-out ${
+          actionMode ? "max-h-16 opacity-100 mt-2" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className={`flex items-center justify-between px-3 py-2 rounded-sm text-xs ${
+          actionMode === "trim"
+            ? "bg-emerald-50 dark:bg-emerald-950/30"
+            : "bg-rose-50 dark:bg-rose-950/30"
+        }`}>
+          <span className="font-mono text-slate-600 dark:text-slate-300 tabular-nums">
+            {formatMs(trimStart)}
+            <span className="mx-1.5 text-slate-400">→</span>
+            {formatMs(trimEnd)}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 mr-1 hidden sm:inline">
+              Enter to confirm
+            </span>
+            <button
+              onClick={handleConfirm}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-sm font-bold cursor-pointer transition-all active:scale-95 ${
+                actionMode === "trim"
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                  : "bg-rose-600 hover:bg-rose-500 text-white"
+              }`}
+            >
+              <Check className="w-3 h-3" />
+              Apply
+            </button>
+            <button
+              onClick={handleCancel}
+              className="flex items-center px-2 py-1 rounded-sm font-bold cursor-pointer transition-all active:scale-95 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 bg-slate-200 dark:bg-slate-700"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
       </div>
-
       {/* ── Unified control row: playback + actions ── */}
       <div className="flex items-center gap-2 mt-3 px-1">
         {/* Playback controls */}
@@ -189,47 +226,6 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           <Scissors className="w-3.5 h-3.5 scale-x-[-1]" />
           Cut Out
         </button>
-      </div>
-
-      {/* Confirm bar — slides in when action is active */}
-      <div
-        className={`overflow-hidden transition-all duration-200 ease-out ${
-          actionMode ? "max-h-16 opacity-100 mt-2" : "max-h-0 opacity-0"
-        }`}
-      >
-        <div className={`flex items-center justify-between px-3 py-2 rounded-sm text-xs ${
-          actionMode === "trim"
-            ? "bg-emerald-50 dark:bg-emerald-950/30"
-            : "bg-rose-50 dark:bg-rose-950/30"
-        }`}>
-          <span className="font-mono text-slate-600 dark:text-slate-300 tabular-nums">
-            {formatMs(trimStart)}
-            <span className="mx-1.5 text-slate-400">→</span>
-            {formatMs(trimEnd)}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 mr-1 hidden sm:inline">
-              Enter to confirm
-            </span>
-            <button
-              onClick={handleConfirm}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-sm font-bold cursor-pointer transition-all active:scale-95 ${
-                actionMode === "trim"
-                  ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-                  : "bg-rose-600 hover:bg-rose-500 text-white"
-              }`}
-            >
-              <Check className="w-3 h-3" />
-              Apply
-            </button>
-            <button
-              onClick={handleCancel}
-              className="flex items-center px-2 py-1 rounded-sm font-bold cursor-pointer transition-all active:scale-95 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 bg-slate-200 dark:bg-slate-700"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Errors */}

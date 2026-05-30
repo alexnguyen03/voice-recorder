@@ -14,8 +14,13 @@ interface WaveformEditorProps {
   onTrim: (startMs: number, endMs: number) => void;
   /** Fired whenever trim range changes */
   onTrimRangeChange?: (startMs: number, endMs: number) => void;
-  /** When true, renders draggable trim handles on the waveform canvas */
-  trimMode?: boolean;
+  /**
+   * Active edit mode:
+   * - 'trim'  = green/amber handles, dim outside selection (keep selection)
+   * - 'cut'   = rose handles, dim inside selection (remove selection)
+   * - null    = no handles, normal seek
+   */
+  editMode?: 'trim' | 'cut' | null;
   /** Fired when play state changes */
   onPlayStateChange?: (playing: boolean) => void;
 }
@@ -30,7 +35,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   audioUrl,
   onTrim: _onTrim,
   onTrimRangeChange,
-  trimMode = false,
+  editMode = null,
   onPlayStateChange,
 }, ref) {
   const [duration, setDuration] = useState<number>(20); // default to 20 seconds
@@ -46,7 +51,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDraggingRef = useRef<boolean>(false);
   const draggingHandleRef = useRef<'start' | 'end' | null>(null);
-  const trimModeRef = useRef<boolean>(false);
+  const editModeRef = useRef<'trim' | 'cut' | null>(null);
 
   // High-density bar count (180 points for a premium professional look)
   const numBars = 180;
@@ -65,7 +70,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   useEffect(() => { startMsRef.current = startMs; }, [startMs]);
   useEffect(() => { endMsRef.current = endMs; }, [endMs]);
   useEffect(() => { isDecodingRef.current = isDecoding; }, [isDecoding]);
-  useEffect(() => { trimModeRef.current = trimMode; }, [trimMode]);
+  useEffect(() => { editModeRef.current = editMode ?? null; }, [editMode]);
 
   // Helper: Format seconds to MM:SS
   const formatTime = (secs: number): string => {
@@ -164,14 +169,18 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     const totalBarsWidth = count * (barWidth + spacing) - spacing;
     const startX = (cssWidth - totalBarsWidth) / 2;
 
-    // Draw Grid Lines (5 divisions)
+    // Split canvas: waveform zone (top) + timeline zone (bottom 20px)
+    const timelineH = 20;
+    const waveHeight = cssHeight - timelineH;
+
+    // Draw Grid Lines (5 divisions) — only in waveform zone
     ctx.strokeStyle = isDark ? "#1e293b" : "#e5e7eb";
     ctx.lineWidth = 1;
     for (let g = 0; g <= 4; g++) {
       const gx = startX + (g / 4) * totalBarsWidth;
       ctx.beginPath();
       ctx.moveTo(gx, 0);
-      ctx.lineTo(gx, cssHeight);
+      ctx.lineTo(gx, waveHeight);
       ctx.stroke();
     }
 
@@ -185,9 +194,9 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       const barTime = (i / count) * dur;
       const amp = waveformRef.current[i] || 0.05;
       
-      const barHeight = amp * (cssHeight * 0.65);
+      const barHeight = amp * (waveHeight * 0.65);
       const x = startX + i * (barWidth + spacing);
-      const y = (cssHeight - barHeight) / 2;
+      const y = (waveHeight - barHeight) / 2;
 
       const isPlayed = barTime <= curTime;
       const isWithinTrim = barTime >= trimStartSec && barTime <= trimEndSec;
@@ -219,7 +228,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(playheadX, 0);
-    ctx.lineTo(playheadX, cssHeight);
+    ctx.lineTo(playheadX, waveHeight);
     ctx.stroke();
 
     // Top cap circle
@@ -230,58 +239,82 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
     // Bottom cap circle
     ctx.beginPath();
-    ctx.arc(playheadX, cssHeight - 3, 3, 0, Math.PI * 2);
+    ctx.arc(playheadX, waveHeight - 3, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Draw draggable trim handles in trim mode
-    if (trimModeRef.current && dur > 0) {
+    // Draw edit-mode handles (trim or cut)
+    const em = editModeRef.current;
+    if (em && dur > 0) {
       const startHandleX = startX + (startMsRef.current / 1000 / dur) * totalBarsWidth;
       const endHandleX   = startX + (endMsRef.current   / 1000 / dur) * totalBarsWidth;
-
-      // Dim region before start handle
-      ctx.fillStyle = isDark ? 'rgba(2,6,23,0.55)' : 'rgba(0,0,0,0.18)';
-      if (startHandleX > startX) {
-        ctx.fillRect(startX, 0, startHandleX - startX, cssHeight);
-      }
-      // Dim region after end handle
-      if (endHandleX < startX + totalBarsWidth) {
-        ctx.fillRect(endHandleX, 0, (startX + totalBarsWidth) - endHandleX, cssHeight);
-      }
-
       const tabW = 10;
       const tabH = 18;
 
-      // Start handle — emerald green
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(startHandleX, 0);
-      ctx.lineTo(startHandleX, cssHeight);
-      ctx.stroke();
-      ctx.fillStyle = '#10b981';
-      ctx.beginPath();
-      if (ctx.roundRect) {
-        ctx.roundRect(startHandleX - tabW / 2, 0, tabW, tabH, 3);
-      } else {
-        ctx.rect(startHandleX - tabW / 2, 0, tabW, tabH);
-      }
-      ctx.fill();
+      if (em === 'trim') {
+        // ── TRIM: dim outside the selection ─────────────────────────
+        ctx.fillStyle = isDark ? 'rgba(2,6,23,0.55)' : 'rgba(0,0,0,0.18)';
+        if (startHandleX > startX)
+          ctx.fillRect(startX, 0, startHandleX - startX, waveHeight);
+        if (endHandleX < startX + totalBarsWidth)
+          ctx.fillRect(endHandleX, 0, (startX + totalBarsWidth) - endHandleX, waveHeight);
 
-      // End handle — amber
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(endHandleX, 0);
-      ctx.lineTo(endHandleX, cssHeight);
-      ctx.stroke();
-      ctx.fillStyle = '#f59e0b';
-      ctx.beginPath();
-      if (ctx.roundRect) {
-        ctx.roundRect(endHandleX - tabW / 2, 0, tabW, tabH, 3);
+        // Start handle — emerald
+        ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(startHandleX, 0); ctx.lineTo(startHandleX, waveHeight); ctx.stroke();
+        ctx.fillStyle = '#10b981'; ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(startHandleX - tabW / 2, 0, tabW, tabH, 3) : ctx.rect(startHandleX - tabW / 2, 0, tabW, tabH);
+        ctx.fill();
+
+        // End handle — amber
+        ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(endHandleX, 0); ctx.lineTo(endHandleX, waveHeight); ctx.stroke();
+        ctx.fillStyle = '#f59e0b'; ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(endHandleX - tabW / 2, 0, tabW, tabH, 3) : ctx.rect(endHandleX - tabW / 2, 0, tabW, tabH);
+        ctx.fill();
+
       } else {
-        ctx.rect(endHandleX - tabW / 2, 0, tabW, tabH);
+        // ── CUT OUT: dim INSIDE the selection (rose tint = region being deleted) ──
+        ctx.fillStyle = isDark ? 'rgba(244,63,94,0.22)' : 'rgba(244,63,94,0.15)';
+        ctx.fillRect(startHandleX, 0, endHandleX - startHandleX, waveHeight);
+
+        // Diagonal hatch lines over the cut region for extra clarity
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(startHandleX, 0, endHandleX - startHandleX, waveHeight);
+        ctx.clip();
+        ctx.strokeStyle = isDark ? 'rgba(244,63,94,0.18)' : 'rgba(244,63,94,0.12)';
+        ctx.lineWidth = 1;
+        for (let hx = startHandleX - waveHeight; hx < endHandleX + waveHeight; hx += 10) {
+          ctx.beginPath(); ctx.moveTo(hx, 0); ctx.lineTo(hx + waveHeight, waveHeight); ctx.stroke();
+        }
+        ctx.restore();
+
+        // Both handles — rose
+        const rose = '#f43f5e';
+        ctx.strokeStyle = rose; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(startHandleX, 0); ctx.lineTo(startHandleX, waveHeight); ctx.stroke();
+        ctx.fillStyle = rose; ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(startHandleX - tabW / 2, 0, tabW, tabH, 3) : ctx.rect(startHandleX - tabW / 2, 0, tabW, tabH);
+        ctx.fill();
+
+        ctx.strokeStyle = rose; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(endHandleX, 0); ctx.lineTo(endHandleX, waveHeight); ctx.stroke();
+        ctx.fillStyle = rose; ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(endHandleX - tabW / 2, 0, tabW, tabH, 3) : ctx.rect(endHandleX - tabW / 2, 0, tabW, tabH);
+        ctx.fill();
       }
-      ctx.fill();
+    }
+
+    // ── Timeline labels — drawn at exact bar x-positions ──────────────
+    const labelY = waveHeight + 5;
+    ctx.font = `10px Inter, system-ui, -apple-system, sans-serif`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = isDark ? 'rgba(148,163,184,0.55)' : 'rgba(100,116,139,0.65)';
+    for (let g = 0; g <= 4; g++) {
+      const gx = startX + (g / 4) * totalBarsWidth;
+      const label = formatTime(dur * (g / 4));
+      ctx.textAlign = g === 0 ? 'left' : g === 4 ? 'right' : 'center';
+      ctx.fillText(label, gx, labelY);
     }
   };
 
@@ -503,8 +536,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // In trim mode: check proximity to either handle first
-    if (trimModeRef.current && durationRef.current > 0) {
+    // In edit mode: check proximity to either handle first
+    if (editModeRef.current && durationRef.current > 0) {
       const rect = canvas.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const bW = 2, sp = 1;
@@ -580,7 +613,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
 
       {/* 2. Symmetrical Interactive Waveform Display (High DPI Retina Canvas) */}
-      <div className="w-full relative bg-white dark:bg-slate-900 rounded-sm p-4 pt-6 pb-3 shadow-sm select-none">
+      <div className="w-full relative bg-white dark:bg-slate-900 rounded-sm shadow-sm select-none">
         {isDecoding && (
           <div className="absolute inset-0 bg-white/70 dark:bg-slate-950/75 backdrop-blur-[1px] flex items-center justify-center rounded-2xl z-10">
             <div className="flex flex-col items-center gap-2">
@@ -592,22 +625,15 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
         <canvas
           ref={canvasRef}
-          className="w-full h-[130px] block"
-          style={{ cursor: trimMode ? 'col-resize' : 'pointer' }}
+          className="w-full h-[150px] block"
+          style={{ cursor: editMode ? 'col-resize' : 'pointer' }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUpOrLeave}
           onMouseLeave={handleMouseUpOrLeave}
         />
 
-        {/* Timestamps aligning with division lines */}
-        <div className="w-full flex justify-between text-[11px] text-gray-400 dark:text-slate-500 font-light mt-4 px-1">
-          <span>00:00</span>
-          <span>{formatTime(duration * 0.25)}</span>
-          <span>{formatTime(duration * 0.5)}</span>
-          <span>{formatTime(duration * 0.75)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
+      {/* Timeline drawn on-canvas — no separate JSX div needed */}
       </div>
 
       {/* Trim range synced to parent via onTrimRangeChange */}
