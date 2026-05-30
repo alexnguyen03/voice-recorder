@@ -33,6 +33,45 @@ function App() {
   const [statusMessage, setStatusMessage] = useState("");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
+  type ThemeType = "light" | "dark" | "system";
+  const [theme, setTheme] = useState<ThemeType>(() => {
+    return (localStorage.getItem("app-theme") as ThemeType) || "system";
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const applyTheme = (currentTheme: ThemeType) => {
+      if (currentTheme === "dark") {
+        root.classList.add("dark");
+      } else if (currentTheme === "light") {
+        root.classList.remove("dark");
+      } else {
+        const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (systemPrefersDark) {
+          root.classList.add("dark");
+        } else {
+          root.classList.remove("dark");
+        }
+      }
+    };
+
+    applyTheme(theme);
+    localStorage.setItem("app-theme", theme);
+
+    if (theme === "system") {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleChange = (e: MediaQueryListEvent) => {
+        if (e.matches) {
+          root.classList.add("dark");
+        } else {
+          root.classList.remove("dark");
+        }
+      };
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+  }, [theme]);
+
   const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
 
   // Resolve audio URL for details preview player
@@ -139,16 +178,16 @@ function App() {
   };
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-10 min-h-screen text-slate-100 flex flex-col">
+    <main className="max-w-3xl mx-auto px-6 py-10 min-h-screen text-slate-800 dark:text-slate-100 flex flex-col transition-colors duration-300">
       <header className="text-center mb-8">
-        <h1 className="text-3xl font-extrabold text-slate-50 tracking-tight mb-2">
+        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-50 tracking-tight mb-2">
           Desktop Voice Recorder
         </h1>
-        <p className="text-sm text-slate-400">Local-First Studio-Grade Voice Recording & Enhancement</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Local-First Studio-Grade Voice Recording & Enhancement</p>
       </header>
 
       {/* Tab Navigation Menu */}
-      <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800 mb-8 self-center gap-1">
+      <div className="flex bg-slate-100 dark:bg-slate-950 p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 mb-8 self-center gap-1">
         <button
           onClick={() => {
             setActiveTab("recording");
@@ -157,7 +196,7 @@ function App() {
           className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
             activeTab === "recording"
               ? "bg-blue-600 text-white shadow"
-              : "text-slate-400 hover:text-slate-200"
+              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
           🎙️ Record
@@ -170,7 +209,7 @@ function App() {
           className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
             activeTab === "files"
               ? "bg-blue-600 text-white shadow"
-              : "text-slate-400 hover:text-slate-200"
+              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
           📁 Saved Recordings ({filesList.length})
@@ -182,7 +221,7 @@ function App() {
           className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
             activeTab === "settings"
               ? "bg-blue-600 text-white shadow"
-              : "text-slate-400 hover:text-slate-200"
+              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
           ⚙️ Settings
@@ -190,15 +229,15 @@ function App() {
       </div>
 
       {error && (
-        <div className="flex justify-between items-center p-3 px-4 bg-red-950/30 border border-red-500/50 rounded-lg text-red-200 mb-6 text-sm shadow-sm">
+        <div className="flex justify-between items-center p-3 px-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-500/50 rounded-lg text-red-700 dark:text-red-200 mb-6 text-sm shadow-sm">
           <span>{error}</span>
-          <button onClick={clearError} className="text-red-400 hover:text-red-200 cursor-pointer font-medium text-xs">Close</button>
+          <button onClick={clearError} className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-250 cursor-pointer font-semibold text-xs">Close</button>
         </div>
       )}
 
       {/* TAB 1: Live Voice Recording */}
       {activeTab === "recording" && (
-        <section className="flex flex-col items-center bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-lg max-w-lg mx-auto w-full">
+        <section className="flex flex-col items-center bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg max-w-lg mx-auto w-full transition-colors duration-300">
           {/* Waveform Visualizer shown always */}
           <div className="w-full mb-8">
             <AudioVisualizer isRecording={isRecording} isPaused={isPaused} />
@@ -211,8 +250,8 @@ function App() {
                 <div
                   className={`h-18 rounded-full border flex items-center overflow-hidden transition-all duration-500 ease-out ${
                     showDiscardConfirm
-                      ? "w-64 border-rose-500/50 bg-slate-900/90 p-2 px-3.5"
-                      : "w-18 border-rose-950 bg-rose-900 hover:bg-rose-800 p-0"
+                      ? "w-64 border-rose-300 dark:border-rose-500/50 bg-slate-100 dark:bg-slate-900/90 p-2 px-3.5"
+                      : "w-18 border-rose-200 dark:border-rose-950 bg-rose-600 hover:bg-rose-500 dark:bg-rose-900 dark:hover:bg-rose-800 p-0"
                   }`}
                 >
                   {showDiscardConfirm ? (
@@ -223,7 +262,7 @@ function App() {
                           e.stopPropagation();
                           setShowDiscardConfirm(false);
                         }}
-                        className="w-12 h-12 rounded-full border border-slate-700 bg-slate-800 hover:bg-slate-700 flex items-center justify-center cursor-pointer shadow active:scale-95 transition-all duration-200 text-slate-300 flex-shrink-0"
+                        className="w-12 h-12 rounded-full border border-slate-300 bg-slate-200 hover:bg-slate-300 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 flex items-center justify-center cursor-pointer shadow active:scale-95 transition-all duration-200 flex-shrink-0"
                         title="Keep recording"
                       >
                         <svg className="w-5 h-5 fill-none stroke-current" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -233,7 +272,7 @@ function App() {
                       </button>
 
                       {/* Discard Title text inside the pill */}
-                      <span className="text-xs font-bold text-rose-400 uppercase tracking-widest text-center select-none px-2 whitespace-nowrap">
+                      <span className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest text-center select-none px-2 whitespace-nowrap">
                         Discard?
                       </span>
 
@@ -336,21 +375,21 @@ function App() {
 
       {/* TAB 3: Settings */}
       {activeTab === "settings" && (
-        <section className="flex flex-col bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg max-w-md mx-auto w-full">
-          <h2 className="text-lg font-bold text-slate-100 mb-6 pb-2 border-b border-slate-700 text-left">
+        <section className="flex flex-col bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg max-w-md mx-auto w-full transition-colors duration-300">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 pb-2 border-b border-slate-200 dark:border-slate-700 text-left">
             Recording Settings
           </h2>
           
           {/* Device configuration */}
           <div className="w-full mb-6 text-left">
-            <label className="block text-xs font-semibold text-slate-400 mb-2">
+            <label className="block text-xs font-semibold text-slate-505 dark:text-slate-400 mb-2">
               Input Microphone Device
             </label>
             <select
               value={selectedDeviceId}
               onChange={(e) => selectDevice(e.target.value)}
               disabled={isRecording}
-              className="w-full p-3 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-blue-500 text-sm cursor-pointer shadow-sm"
+              className="w-full p-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 text-sm cursor-pointer shadow-sm animate-fade-in"
             >
               {devices.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -359,19 +398,44 @@ function App() {
               ))}
             </select>
             {isRecording && (
-              <p className="text-[10px] text-amber-400 mt-2">
+              <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-2">
                 ⚠️ Microphone cannot be changed while recording is active.
               </p>
             )}
           </div>
 
-          <div className="text-left bg-slate-900/40 p-4 rounded-xl border border-slate-700/40">
-            <h4 className="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Audio Properties</h4>
-            <ul className="text-xs text-slate-400 space-y-1.5">
-              <li>• Format: <span className="text-slate-300 font-semibold">WAV (PCM)</span></li>
-              <li>• Sample Rate: <span className="text-slate-300 font-semibold">44,100 Hz</span></li>
-              <li>• Channels: <span className="text-slate-300 font-semibold">Mono (1 channel)</span></li>
-              <li>• Bit Depth: <span className="text-slate-300 font-semibold">16-bit</span></li>
+          {/* Theme Selector Section */}
+          <div className="w-full mb-6 text-left border-t border-slate-200 dark:border-slate-700/60 pt-5">
+            <label className="block text-xs font-semibold text-slate-550 dark:text-slate-400 mb-2.5">
+              Theme Mode
+            </label>
+            <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-850 gap-1 self-start w-full">
+              {(["light", "dark", "system"] as ThemeType[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg cursor-pointer transition-all duration-200 capitalize flex items-center justify-center gap-1.5 ${
+                    theme === t
+                      ? "bg-blue-600 text-white shadow"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                >
+                  {t === "light" && "☀️"}
+                  {t === "dark" && "🌙"}
+                  {t === "system" && "💻"}
+                  <span>{t}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-left bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700/40">
+            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Audio Properties</h4>
+            <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1.5">
+              <li>• Format: <span className="text-slate-700 dark:text-slate-300 font-semibold">WAV (PCM)</span></li>
+              <li>• Sample Rate: <span className="text-slate-700 dark:text-slate-300 font-semibold">44,100 Hz</span></li>
+              <li>• Channels: <span className="text-slate-700 dark:text-slate-300 font-semibold">Mono (1 channel)</span></li>
+              <li>• Bit Depth: <span className="text-slate-700 dark:text-slate-300 font-semibold">16-bit</span></li>
             </ul>
           </div>
         </section>
@@ -382,8 +446,8 @@ function App() {
         <section className="w-full">
           {selectedFile === null ? (
             // Sub-view 2A: List of all WAV files
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
-              <h2 className="text-lg font-bold text-slate-200 mb-4 pb-2 border-b border-slate-700">Recorded Library</h2>
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg transition-colors duration-300">
+              <h2 className="text-lg font-bold text-slate-850 dark:text-slate-200 mb-4 pb-2 border-b border-slate-200 dark:border-slate-700">Recorded Library</h2>
               
               {filesList.length === 0 ? (
                 <div className="text-center py-10 text-slate-500 text-sm">
@@ -398,12 +462,12 @@ function App() {
                         setSelectedFile(file);
                         setStatusMessage("");
                       }}
-                      className="flex items-center justify-between p-3.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-750 hover:border-slate-700 rounded-xl cursor-pointer transition-all duration-200 group"
+                      className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/50 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl cursor-pointer transition-all duration-200 group"
                     >
                       <div className="flex items-center gap-3 overflow-hidden pr-4">
                         <span className="text-lg">🎵</span>
                         <div className="text-left overflow-hidden">
-                          <div className="text-sm font-semibold text-slate-200 truncate group-hover:text-blue-400">
+                          <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">
                             {getFileName(file)}
                           </div>
                           <div className="text-[10px] text-slate-500 truncate max-w-xs md:max-w-md mt-0.5">
@@ -411,7 +475,7 @@ function App() {
                           </div>
                         </div>
                       </div>
-                      <button className="text-slate-400 group-hover:text-blue-400 text-sm font-bold flex items-center gap-1">
+                      <button className="text-slate-550 group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-blue-400 text-sm font-bold flex items-center gap-1 cursor-pointer">
                         Edit & Play <span className="text-xs">➡️</span>
                       </button>
                     </div>
@@ -421,23 +485,23 @@ function App() {
             </div>
           ) : (
             // Sub-view 2B: Detailed Processing Studio for Selected File
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg transition-colors duration-300">
               <button
                 onClick={() => {
                   setSelectedFile(null);
                   setStatusMessage("");
                 }}
-                className="mb-6 px-4 py-2 bg-slate-900 hover:bg-slate-950 border border-slate-700 text-slate-300 hover:text-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow flex items-center gap-1.5 active:scale-95"
+                className="mb-6 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow flex items-center gap-1.5 active:scale-95"
               >
                 ⬅️ Back to Recordings List
               </button>
 
-              <h2 className="text-lg font-bold text-slate-100 mb-4 border-b border-slate-700 pb-2">
+              <h2 className="text-lg font-bold text-slate-850 dark:text-slate-100 mb-4 border-b border-slate-200 dark:border-slate-700 pb-2">
                 Voice Detail Studio
               </h2>
 
               {/* High-fidelity Waveform Player & Editor */}
-              <div className="mb-6 bg-slate-900/40 p-6 rounded-2xl border border-slate-700/60">
+              <div className="mb-6 bg-slate-55 dark:bg-slate-900/40 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60">
                 <WaveformEditor
                   filePath={selectedFile}
                   audioUrl={audioUrl}
@@ -447,15 +511,15 @@ function App() {
 
               {/* Browser Preview Mode Warning Banner */}
               {selectedFile.startsWith("[BROWSER_PREVIEW_MODE]") && (
-                <div className="mb-6 p-4 bg-amber-950/20 border border-amber-500/30 rounded-lg text-amber-200 text-xs text-left leading-relaxed shadow-sm">
+                <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-955/20 border border-amber-200 dark:border-amber-500/30 rounded-lg text-amber-800 dark:text-amber-200 text-xs text-left leading-relaxed shadow-sm">
                   <span className="font-bold block mb-1">⚠️ Browser Preview Mode Active</span>
                   You are currently running the app in a standard web browser. Recording and audio processing are simulated for preview purposes, and **no actual files are written to your physical drive**. To record real audio and save WAV files, please install the Rust toolchain and execute <strong>npm run tauri dev</strong>.
                 </div>
               )}
 
               {/* Voice Detail Filters */}
-              <div className="p-6 bg-slate-900/40 rounded-2xl border border-slate-700/60 mb-6">
-                <h3 className="text-sm font-bold text-slate-355 mb-4 text-left">Voice Detail Filters</h3>
+              <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-6">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-300 mb-4 text-left">Voice Detail Filters</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
                   <div>
                     <div className="flex items-center gap-2.5 mb-5">
@@ -466,17 +530,17 @@ function App() {
                         onChange={(e) => setEffectsEnabled(e.target.checked)}
                         className="cursor-pointer w-4 h-4 rounded accent-blue-500"
                       />
-                      <label htmlFor="noise-cancellation" className="text-slate-200 text-sm cursor-pointer select-none font-medium">
+                      <label htmlFor="noise-cancellation" className="text-slate-700 dark:text-slate-200 text-sm cursor-pointer select-none font-medium">
                         Enable Noise Suppression (RNNoise)
                       </label>
                     </div>
 
                     <div className="mb-4">
                       <div className="flex justify-between items-center mb-1">
-                        <label className="block text-xs font-semibold text-slate-400">
+                        <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">
                           Bass Boost (Warmth)
                         </label>
-                        <span className="text-[10px] bg-slate-800 text-slate-300 font-bold px-1.5 py-0.5 rounded">{Math.round(bass * 100)}%</span>
+                        <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-1.5 py-0.5 rounded">{Math.round(bass * 100)}%</span>
                       </div>
                       <input
                         type="range"
@@ -485,7 +549,7 @@ function App() {
                         step="0.05"
                         value={bass}
                         onChange={(e) => setBass(Number(e.target.value))}
-                        className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-950 rounded-lg appearance-none"
+                        className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-955 rounded-lg appearance-none"
                       />
                     </div>
                   </div>
@@ -493,10 +557,10 @@ function App() {
                   <div>
                     <div className="mb-6">
                       <div className="flex justify-between items-center mb-1">
-                        <label className="block text-xs font-semibold text-slate-400">
+                        <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400">
                           Treble Boost (Clarity)
                         </label>
-                        <span className="text-[10px] bg-slate-800 text-slate-300 font-bold px-1.5 py-0.5 rounded">{Math.round(treble * 100)}%</span>
+                        <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-1.5 py-0.5 rounded">{Math.round(treble * 100)}%</span>
                       </div>
                       <input
                         type="range"
@@ -505,7 +569,7 @@ function App() {
                         step="0.05"
                         value={treble}
                         onChange={(e) => setTreble(Number(e.target.value))}
-                        className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-950 rounded-lg appearance-none"
+                        className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-955 rounded-lg appearance-none"
                       />
                     </div>
 

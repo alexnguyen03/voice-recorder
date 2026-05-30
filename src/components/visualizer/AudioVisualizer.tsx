@@ -128,11 +128,19 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       ctx.clearRect(0, 0, cssWidth, cssHeight);
 
       // Draw background gradient matching mockup
+      const isDark = document.documentElement.classList.contains("dark");
       const bgGradient = ctx.createLinearGradient(0, 0, 0, cssHeight);
-      bgGradient.addColorStop(0, "#f9fafb");
-      bgGradient.addColorStop(0.2, "#ffffff");
-      bgGradient.addColorStop(0.8, "#ffffff");
-      bgGradient.addColorStop(1, "#f3f4f6");
+      if (isDark) {
+        bgGradient.addColorStop(0, "#0f172a");
+        bgGradient.addColorStop(0.2, "#0b0f19");
+        bgGradient.addColorStop(0.8, "#0b0f19");
+        bgGradient.addColorStop(1, "#020617");
+      } else {
+        bgGradient.addColorStop(0, "#f9fafb");
+        bgGradient.addColorStop(0.2, "#ffffff");
+        bgGradient.addColorStop(0.8, "#ffffff");
+        bgGradient.addColorStop(1, "#f3f4f6");
+      }
       ctx.fillStyle = bgGradient;
       ctx.fillRect(0, 0, cssWidth, cssHeight);
 
@@ -181,9 +189,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       const startX = (cssWidth - totalBarsWidth) / 2;
 
       // Draw Grid Lines (5 divisions) and text timestamps
-      ctx.strokeStyle = "#e5e7eb";
+      ctx.strokeStyle = isDark ? "#1e293b" : "#e5e7eb";
       ctx.lineWidth = 1;
-      ctx.fillStyle = "#9ca3af";
+      ctx.fillStyle = isDark ? "#64748b" : "#9ca3af";
       ctx.font = "10px Inter, system-ui, -apple-system, sans-serif";
       ctx.textAlign = "center";
 
@@ -250,7 +258,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const y = centerY - barHeight / 2;
 
         const isRecorded = isRecording && i <= recordedBarsCount && barTimeEnd > 0;
-        ctx.fillStyle = isRecorded ? "#54b4ff" : "#e5e7eb"; // blue for recorded, grey for future/idle
+        ctx.fillStyle = isRecorded ? "#54b4ff" : (isDark ? "#1e293b" : "#e5e7eb"); // blue for recorded, grey for future/idle
 
         ctx.beginPath();
         if (ctx.roundRect) {
@@ -298,7 +306,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="w-full relative bg-white border border-gray-200/80 rounded-2xl p-6 pt-8 pb-3 shadow-sm select-none">
+      <div className="w-full relative bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-slate-800/80 rounded-2xl p-6 pt-8 pb-3 shadow-sm select-none">
         <canvas
           ref={canvasRef}
           className="w-full h-[150px] block"

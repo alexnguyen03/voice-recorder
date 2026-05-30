@@ -121,11 +121,19 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
     // Draw background gradient as in mockup
+    const isDark = document.documentElement.classList.contains("dark");
     const bgGradient = ctx.createLinearGradient(0, 0, 0, cssHeight);
-    bgGradient.addColorStop(0, "#f9fafb");
-    bgGradient.addColorStop(0.2, "#ffffff");
-    bgGradient.addColorStop(0.8, "#ffffff");
-    bgGradient.addColorStop(1, "#f3f4f6");
+    if (isDark) {
+      bgGradient.addColorStop(0, "#0f172a");
+      bgGradient.addColorStop(0.2, "#0b0f19");
+      bgGradient.addColorStop(0.8, "#0b0f19");
+      bgGradient.addColorStop(1, "#020617");
+    } else {
+      bgGradient.addColorStop(0, "#f9fafb");
+      bgGradient.addColorStop(0.2, "#ffffff");
+      bgGradient.addColorStop(0.8, "#ffffff");
+      bgGradient.addColorStop(1, "#f3f4f6");
+    }
     ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, cssWidth, cssHeight);
 
@@ -137,7 +145,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
     const startX = (cssWidth - totalBarsWidth) / 2;
 
     // Draw Grid Lines (5 divisions)
-    ctx.strokeStyle = "#e5e7eb";
+    ctx.strokeStyle = isDark ? "#1e293b" : "#e5e7eb";
     ctx.lineWidth = 1;
     for (let g = 0; g <= 4; g++) {
       const gx = startX + (g / 4) * totalBarsWidth;
@@ -165,9 +173,13 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
       const isWithinTrim = barTime >= trimStartSec && barTime <= trimEndSec;
 
       if (isPlayed) {
-        ctx.fillStyle = isWithinTrim ? "#54b4ff" : "rgba(84, 180, 255, 0.35)"; // blue
+        ctx.fillStyle = isWithinTrim 
+          ? "#54b4ff" 
+          : (isDark ? "rgba(84, 180, 255, 0.25)" : "rgba(84, 180, 255, 0.35)"); // blue
       } else {
-        ctx.fillStyle = isWithinTrim ? "#d0d0d0" : "rgba(208, 208, 208, 0.35)"; // grey
+        ctx.fillStyle = isWithinTrim 
+          ? (isDark ? "#475569" : "#d0d0d0") 
+          : (isDark ? "rgba(71, 85, 105, 0.25)" : "rgba(208, 208, 208, 0.35)"); // grey
       }
 
       ctx.beginPath();
@@ -437,12 +449,12 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
       </div>
 
       {/* 2. Symmetrical Interactive Waveform Display (High DPI Retina Canvas) */}
-      <div className="w-full relative bg-white border border-gray-200/80 rounded-2xl p-6 pt-8 pb-3 shadow-sm select-none">
+      <div className="w-full relative bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-slate-800/80 rounded-2xl p-6 pt-8 pb-3 shadow-sm select-none">
         {isDecoding && (
-          <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center rounded-2xl z-10">
+          <div className="absolute inset-0 bg-white/70 dark:bg-slate-950/75 backdrop-blur-[1px] flex items-center justify-center rounded-2xl z-10">
             <div className="flex flex-col items-center gap-2">
               <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-[10px] text-gray-500 font-medium">Extracting sound waves...</span>
+              <span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Extracting sound waves...</span>
             </div>
           </div>
         )}
@@ -457,7 +469,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
         />
 
         {/* Timestamps aligning with division lines */}
-        <div className="w-full flex justify-between text-[11px] text-gray-400 font-light mt-4 px-1">
+        <div className="w-full flex justify-between text-[11px] text-gray-400 dark:text-slate-500 font-light mt-4 px-1">
           <span>00:00</span>
           <span>{formatTime(duration * 0.25)}</span>
           <span>{formatTime(duration * 0.5)}</span>
@@ -471,7 +483,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
         {/* Skip 15s backward */}
         <button
           onClick={skipBackward}
-          className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-90 transition-all cursor-pointer bg-slate-900/40 rounded-full border border-slate-700/30"
+          className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 active:scale-90 transition-all cursor-pointer bg-slate-100 dark:bg-slate-900/40 rounded-full border border-slate-300 dark:border-slate-700/30"
           title="Rewind 15 seconds"
         >
           <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -483,7 +495,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
         {/* Play/Pause Center Indicator */}
         <button
           onClick={togglePlay}
-          className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-white active:scale-90 transition-all cursor-pointer"
+          className="w-10 h-10 flex items-center justify-center text-slate-700 hover:text-black dark:text-slate-300 dark:hover:text-white active:scale-90 transition-all cursor-pointer"
         >
           {isPlaying ? (
             <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
@@ -499,7 +511,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
         {/* Skip 15s forward */}
         <button
           onClick={skipForward}
-          className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-90 transition-all cursor-pointer bg-slate-900/40 rounded-full border border-slate-700/30"
+          className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 active:scale-90 transition-all cursor-pointer bg-slate-100 dark:bg-slate-900/40 rounded-full border border-slate-300 dark:border-slate-700/30"
           title="Skip 15 seconds"
         >
           <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -527,27 +539,27 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
       </button>
 
       {/* 5. Precise Editing Form (Start / End Input for Trim) */}
-      <div className="w-full grid grid-cols-2 gap-4 mt-8 pt-6 border-t border-slate-700/40">
+      <div className="w-full grid grid-cols-2 gap-4 mt-8 pt-6 border-t border-slate-200 dark:border-slate-700/40">
         <div>
-          <label className="block text-xs text-slate-400 mb-1.5 font-semibold text-left">Start point (ms)</label>
+          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-semibold text-left">Start point (ms)</label>
           <input
             type="number"
             min="0"
             max={endMs - 100}
             value={startMs}
             onChange={(e) => handleStartChange(Number(e.target.value))}
-            className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700/80 text-white focus:outline-none focus:border-blue-500 text-sm shadow-sm"
+            className="w-full p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/85 text-slate-800 dark:text-white focus:outline-none focus:border-blue-500 text-sm shadow-sm"
           />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1.5 font-semibold text-left">End point (ms)</label>
+          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-semibold text-left">End point (ms)</label>
           <input
             type="number"
             min={startMs + 100}
             max={Math.round(duration * 1000)}
             value={endMs}
             onChange={(e) => handleEndChange(Number(e.target.value))}
-            className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700/80 text-white focus:outline-none focus:border-blue-500 text-sm shadow-sm"
+            className="w-full p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/85 text-slate-800 dark:text-white focus:outline-none focus:border-blue-500 text-sm shadow-sm"
           />
         </div>
       </div>
