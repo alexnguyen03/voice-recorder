@@ -7,8 +7,8 @@ interface AudioVisualizerProps {
 }
 
 /**
- * Component hiển thị dạng sóng âm thanh thời gian thực (Real-time Waveform).
- * Sử dụng HTML5 Canvas thuần để tối ưu hóa hiệu năng vẽ.
+ * Real-time Audio Waveform Visualizer.
+ * Leverages HTML5 Canvas for high-performance fluid rendering.
  */
 export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   isRecording,
@@ -28,7 +28,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     let width = canvas.width;
     let height = canvas.height;
 
-    // Giả lập sóng âm thanh thời gian thực khi đang ghi âm
+    // Simulate real-time audio wave movements when recording
     const drawMockWave = () => {
       ctx.fillStyle = backgroundColor;
       ctx.fillRect(0, 0, width, height);
@@ -42,7 +42,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
       ctx.moveTo(0, height / 2);
       for (let i = 0; i < 50; i++) {
-        // Tạo bước sóng giả lập ngẫu nhiên nếu đang ghi âm
+        // Generate random amplitude peaks if actively recording
         const amp = isRecording ? Math.sin(i * 0.3) * (Math.random() * (height / 3)) : 0;
         const y = height / 2 + amp;
 
@@ -66,7 +66,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     if (isRecording) {
       drawMockWave();
     } else {
-      // Trả canvas về trạng thái phẳng tĩnh
+      // Render static flat baseline when idle
       ctx.fillStyle = backgroundColor;
       ctx.fillRect(0, 0, width, height);
       ctx.lineWidth = 2;
@@ -85,12 +85,12 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   }, [isRecording, color, backgroundColor]);
 
   return (
-    <div style={{ width: "100%", height: "150px", borderRadius: "8px", overflow: "hidden" }}>
+    <div className="w-full h-[150px] rounded-lg overflow-hidden border border-slate-700 shadow-inner">
       <canvas
         ref={canvasRef}
         width={600}
         height={150}
-        style={{ width: "100%", height: "100%", display: "block" }}
+        className="w-full h-full block"
       />
     </div>
   );
