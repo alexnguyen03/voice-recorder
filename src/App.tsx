@@ -149,10 +149,23 @@ function App() {
     try {
       const newPath = await AudioService.trimAudio(selectedFile, startMs, endMs);
       setStatusMessage(`Successfully trimmed: ${getFileName(newPath)}`);
-      setSelectedFile(newPath); // Auto-load the trimmed file into the player
+      setSelectedFile(newPath);
       refreshFiles();
     } catch (err) {
       setStatusMessage(`Trim error: ${err}`);
+    }
+  };
+
+  const handleCut = async (startMs: number, endMs: number) => {
+    if (!selectedFile) return;
+    setStatusMessage("Cutting segment...");
+    try {
+      const newPath = await AudioService.cutAudioSegment(selectedFile, startMs, endMs);
+      setStatusMessage(`Segment removed: ${getFileName(newPath)}`);
+      setSelectedFile(newPath);
+      refreshFiles();
+    } catch (err) {
+      setStatusMessage(`Cut error: ${err}`);
     }
   };
 
@@ -291,6 +304,7 @@ function App() {
                   setStatusMessage("");
                 }}
                 onTrim={handleTrim}
+                onCut={handleCut}
                 onApplyEffects={handleApplyEffects}
                 statusMessage={statusMessage}
               />

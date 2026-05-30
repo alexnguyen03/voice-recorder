@@ -163,6 +163,23 @@ export const AudioService = {
   },
 
   /**
+   * Removes the segment between startMs and endMs, keeping the audio before and after.
+   */
+  async cutAudioSegment(filePath: string, startMs: number, endMs: number): Promise<string> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating audio cut.");
+      return filePath.replace(".wav", "_cut.wav");
+    }
+
+    try {
+      return await invoke<string>("cut_audio_segment", { filePath, startMs, endMs });
+    } catch (error) {
+      console.error("Failed to cut audio segment:", error);
+      throw new Error(String(error));
+    }
+  },
+
+  /**
    * Applies DSP filters (noise cancellation and EQ boosts) to the audio file.
    */
   async applyVoiceEffects(filePath: string, options: VoiceEffectOptions): Promise<string> {

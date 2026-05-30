@@ -1,9 +1,23 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+
+/** Methods exposed to parent via ref */
+export interface WaveformEditorHandle {
+  togglePlay: () => void;
+  skipBackward: () => void;
+  skipForward: () => void;
+  isPlaying: () => boolean;
+}
 
 interface WaveformEditorProps {
   filePath: string;
   audioUrl: string;
   onTrim: (startMs: number, endMs: number) => void;
+  /** Fired whenever trim range changes */
+  onTrimRangeChange?: (startMs: number, endMs: number) => void;
+  /** When true, renders draggable trim handles on the waveform canvas */
+  trimMode?: boolean;
+  /** Fired when play state changes */
+  onPlayStateChange?: (playing: boolean) => void;
 }
 
 /**
@@ -11,11 +25,14 @@ interface WaveformEditorProps {
  * Uses direct Canvas drawing in a requestAnimationFrame loop to bypass React render overhead,
  * achieving buttery-smooth 60fps playhead movements and high-DPI (Retina) responsive scaling.
  */
-export const WaveformEditor: React.FC<WaveformEditorProps> = ({
+export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorProps>(function WaveformEditorInner({
   filePath,
   audioUrl,
-  onTrim,
-}) => {
+  onTrim: _onTrim,
+  onTrimRangeChange,
+  trimMode = false,
+  onPlayStateChange,
+}, ref) {
   const [duration, setDuration] = useState<number>(20); // default to 20 seconds
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [waveform, setWaveform] = useState<number[]>([]);
@@ -28,6 +45,8 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDraggingRef = useRef<boolean>(false);
+  const draggingHandleRef = useRef<'start' | 'end' | null>(null);
+  const trimModeRef = useRef<boolean>(false);
 
   // High-density bar count (180 points for a premium professional look)
   const numBars = 180;
@@ -46,6 +65,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
   useEffect(() => { startMsRef.current = startMs; }, [startMs]);
   useEffect(() => { endMsRef.current = endMs; }, [endMs]);
   useEffect(() => { isDecodingRef.current = isDecoding; }, [isDecoding]);
+  useEffect(() => { trimModeRef.current = trimMode; }, [trimMode]);
 
   // Helper: Format seconds to MM:SS
   const formatTime = (secs: number): string => {
@@ -212,6 +232,57 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
     ctx.beginPath();
     ctx.arc(playheadX, cssHeight - 3, 3, 0, Math.PI * 2);
     ctx.fill();
+
+    // Draw draggable trim handles in trim mode
+    if (trimModeRef.current && dur > 0) {
+      const startHandleX = startX + (startMsRef.current / 1000 / dur) * totalBarsWidth;
+      const endHandleX   = startX + (endMsRef.current   / 1000 / dur) * totalBarsWidth;
+
+      // Dim region before start handle
+      ctx.fillStyle = isDark ? 'rgba(2,6,23,0.55)' : 'rgba(0,0,0,0.18)';
+      if (startHandleX > startX) {
+        ctx.fillRect(startX, 0, startHandleX - startX, cssHeight);
+      }
+      // Dim region after end handle
+      if (endHandleX < startX + totalBarsWidth) {
+        ctx.fillRect(endHandleX, 0, (startX + totalBarsWidth) - endHandleX, cssHeight);
+      }
+
+      const tabW = 10;
+      const tabH = 18;
+
+      // Start handle — emerald green
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(startHandleX, 0);
+      ctx.lineTo(startHandleX, cssHeight);
+      ctx.stroke();
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(startHandleX - tabW / 2, 0, tabW, tabH, 3);
+      } else {
+        ctx.rect(startHandleX - tabW / 2, 0, tabW, tabH);
+      }
+      ctx.fill();
+
+      // End handle — amber
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(endHandleX, 0);
+      ctx.lineTo(endHandleX, cssHeight);
+      ctx.stroke();
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(endHandleX - tabW / 2, 0, tabW, tabH, 3);
+      } else {
+        ctx.rect(endHandleX - tabW / 2, 0, tabW, tabH);
+      }
+      ctx.fill();
+    }
   };
 
   // 2. Load Audio and Extract Waveform
@@ -341,6 +412,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
 
   const handleAudioEnded = () => {
     setIsPlaying(false);
+    onPlayStateChange?.(false);
     currentTimeRef.current = 0;
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
@@ -354,9 +426,11 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      onPlayStateChange?.(false);
     } else {
       audioRef.current.play().catch((err) => console.error("Playback error:", err));
       setIsPlaying(true);
+      onPlayStateChange?.(true);
     }
   };
 
@@ -375,6 +449,14 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
     currentTimeRef.current = target;
     draw();
   };
+
+  // Expose imperative handle to parent
+  useImperativeHandle(ref, () => ({
+    togglePlay,
+    skipBackward,
+    skipForward,
+    isPlaying: () => isPlaying,
+  }));
 
   // Interactive Click & Drag Seeking on Waveform Canvas
   const handleCanvasInteraction = (clientX: number) => {
@@ -405,31 +487,86 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
     }
   };
 
+  const HANDLE_SNAP_PX = 12;
+
+  /** Convert a clientX position to milliseconds within the audio duration */
+  const resolveXToMs = (clientX: number, rect: DOMRect): number => {
+    const bW = 2, sp = 1;
+    const cnt = waveformRef.current.length;
+    const totalW = cnt * (bW + sp) - sp;
+    const sX = (rect.width - totalW) / 2;
+    const relX = Math.max(0, Math.min(clientX - rect.left - sX, totalW));
+    return Math.round((relX / totalW) * durationRef.current * 1000);
+  };
+
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // In trim mode: check proximity to either handle first
+    if (trimModeRef.current && durationRef.current > 0) {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const bW = 2, sp = 1;
+      const cnt = waveformRef.current.length;
+      const totalW = cnt * (bW + sp) - sp;
+      const sX = (rect.width - totalW) / 2;
+      const dur = durationRef.current;
+      const startHandleX = sX + (startMsRef.current / 1000 / dur) * totalW;
+      const endHandleX   = sX + (endMsRef.current   / 1000 / dur) * totalW;
+
+      if (Math.abs(clickX - startHandleX) <= HANDLE_SNAP_PX) {
+        draggingHandleRef.current = 'start';
+        return;
+      }
+      if (Math.abs(clickX - endHandleX) <= HANDLE_SNAP_PX) {
+        draggingHandleRef.current = 'end';
+        return;
+      }
+    }
+
     isDraggingRef.current = true;
     handleCanvasInteraction(e.clientX);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+
+    // Dragging a trim handle
+    if (draggingHandleRef.current && canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const targetMs = resolveXToMs(e.clientX, rect);
+
+      if (draggingHandleRef.current === 'start') {
+        const clamped = Math.max(0, Math.min(targetMs, endMsRef.current - 100));
+        setStartMs(clamped);
+        startMsRef.current = clamped; // update ref immediately for smooth draw()
+        onTrimRangeChange?.(clamped, endMsRef.current);
+      } else {
+        const maxMs = Math.round(durationRef.current * 1000);
+        const clamped = Math.max(startMsRef.current + 100, Math.min(targetMs, maxMs));
+        setEndMs(clamped);
+        endMsRef.current = clamped;
+        onTrimRangeChange?.(startMsRef.current, clamped);
+      }
+      draw();
+      return;
+    }
+
     if (isDraggingRef.current) {
       handleCanvasInteraction(e.clientX);
     }
   };
 
   const handleMouseUpOrLeave = () => {
+    draggingHandleRef.current = null;
     isDraggingRef.current = false;
   };
 
-  // Validate start and end inputs
-  const handleStartChange = (val: number) => {
-    const clamped = Math.max(0, Math.min(val, endMs - 100));
-    setStartMs(clamped);
-  };
-
-  const handleEndChange = (val: number) => {
-    const clamped = Math.min(Math.max(val, startMs + 100), Math.round(duration * 1000));
-    setEndMs(clamped);
-  };
+  // Sync trim range to parent whenever startMs/endMs change
+  useEffect(() => {
+    onTrimRangeChange?.(startMs, endMs);
+  }, [startMs, endMs]);
 
   return (
     <div className="w-full flex flex-col items-center">
@@ -441,15 +578,9 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
         onEnded={handleAudioEnded}
       />
 
-      {/* 1. File Title Heading */}
-      <div className="w-full text-center mb-5">
-        <h3 className="text-xl font-light text-slate-350 tracking-wide select-none">
-          {filePath ? filePath.split(/[/\\]/).pop() : "Sound #1"}
-        </h3>
-      </div>
 
       {/* 2. Symmetrical Interactive Waveform Display (High DPI Retina Canvas) */}
-      <div className="w-full relative bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-slate-800/80 rounded-2xl p-6 pt-8 pb-3 shadow-sm select-none">
+      <div className="w-full relative bg-white dark:bg-slate-900 rounded-sm p-4 pt-6 pb-3 shadow-sm select-none">
         {isDecoding && (
           <div className="absolute inset-0 bg-white/70 dark:bg-slate-950/75 backdrop-blur-[1px] flex items-center justify-center rounded-2xl z-10">
             <div className="flex flex-col items-center gap-2">
@@ -461,7 +592,8 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
 
         <canvas
           ref={canvasRef}
-          className="w-full h-[130px] block cursor-pointer"
+          className="w-full h-[130px] block"
+          style={{ cursor: trimMode ? 'col-resize' : 'pointer' }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUpOrLeave}
@@ -478,99 +610,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
         </div>
       </div>
 
-      {/* 3. Media Controls Bar */}
-      <div className="flex items-center justify-center gap-8 mt-6">
-        {/* Skip 15s backward */}
-        <button
-          onClick={skipBackward}
-          className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 active:scale-90 transition-all cursor-pointer bg-slate-100 dark:bg-slate-900/40 rounded-full border border-slate-300 dark:border-slate-700/30"
-          title="Rewind 15 seconds"
-        >
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-            <path d="M12.5 3C17.15 3 21 6.85 21 11.5c0 4.65-3.85 8.5-8.5 8.5-4.14 0-7.61-2.99-8.37-6.95H6.2C6.9 15.89 9.44 18 12.5 18c3.58 0 6.5-2.92 6.5-6.5S16.08 5 12.5 5c-2.04 0-3.86 1-5 2.54V5H5v6h6V9H8.55c.98-1.78 2.87-3 4.95-3z"/>
-            <text x="12.5" y="15" fontSize="6.5" fontWeight="bold" textAnchor="middle" fill="currentColor">15</text>
-          </svg>
-        </button>
-
-        {/* Play/Pause Center Indicator */}
-        <button
-          onClick={togglePlay}
-          className="w-10 h-10 flex items-center justify-center text-slate-700 hover:text-black dark:text-slate-300 dark:hover:text-white active:scale-90 transition-all cursor-pointer"
-        >
-          {isPlaying ? (
-            <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            </svg>
-          ) : (
-            <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-          )}
-        </button>
-
-        {/* Skip 15s forward */}
-        <button
-          onClick={skipForward}
-          className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 active:scale-90 transition-all cursor-pointer bg-slate-100 dark:bg-slate-900/40 rounded-full border border-slate-300 dark:border-slate-700/30"
-          title="Skip 15 seconds"
-        >
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-            <path d="M11.5 3C6.85 3 3 6.85 3 11.5c0 4.65 3.85 8.5 8.5 8.5 4.14 0 7.61-2.99 8.37-6.95h-2.06c-.7 2.84-3.24 4.95-6.31 4.95-3.58 0-6.5-2.92-6.5-6.5S7.92 5 11.5 5c2.04 0 3.86 1 5 2.54V5h2.5v6H13V9h2.45c-.98-1.78-2.87-3-4.95-3z"/>
-            <text x="11.5" y="15" fontSize="6.5" fontWeight="bold" textAnchor="middle" fill="currentColor">15</text>
-          </svg>
-        </button>
-      </div>
-
-      {/* 4. Large Blue Pill Button */}
-      <button
-        onClick={togglePlay}
-        className="bg-[#54b4ff] hover:bg-[#469eef] text-white w-64 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all shadow-sm mt-6 cursor-pointer"
-        title={isPlaying ? "Pause playback" : "Start playback"}
-      >
-        {isPlaying ? (
-          <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-          </svg>
-        ) : (
-          <svg className="w-6 h-6 fill-current pl-1" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        )}
-      </button>
-
-      {/* 5. Precise Editing Form (Start / End Input for Trim) */}
-      <div className="w-full grid grid-cols-2 gap-4 mt-8 pt-6 border-t border-slate-200 dark:border-slate-700/40">
-        <div>
-          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-semibold text-left">Start point (ms)</label>
-          <input
-            type="number"
-            min="0"
-            max={endMs - 100}
-            value={startMs}
-            onChange={(e) => handleStartChange(Number(e.target.value))}
-            className="w-full p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/85 text-slate-800 dark:text-white focus:outline-none focus:border-blue-500 text-sm shadow-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-semibold text-left">End point (ms)</label>
-          <input
-            type="number"
-            min={startMs + 100}
-            max={Math.round(duration * 1000)}
-            value={endMs}
-            onChange={(e) => handleEndChange(Number(e.target.value))}
-            className="w-full p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700/85 text-slate-800 dark:text-white focus:outline-none focus:border-blue-500 text-sm shadow-sm"
-          />
-        </div>
-      </div>
-
-      {/* 6. Action Button for Trim */}
-      <button
-        onClick={() => onTrim(startMs, endMs)}
-        className="w-full mt-5 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition-colors rounded-xl text-white font-bold cursor-pointer text-sm shadow-sm"
-      >
-        Trim Selected Area
-      </button>
+      {/* Trim range synced to parent via onTrimRangeChange */}
     </div>
   );
-};
+});
