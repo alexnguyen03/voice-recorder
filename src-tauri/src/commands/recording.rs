@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 use tauri::{State, AppHandle, Manager};
-use crate::core::models::{AppError, DeviceInfo, RecordConfig};
+use crate::core::models::{DeviceInfo, RecordConfig};
 use crate::infra::{CpalRecorder, LocalStorage};
 use crate::core::traits::{AudioRecorder, AudioStorage};
 
