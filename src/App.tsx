@@ -197,7 +197,7 @@ function App() {
           }}
           className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
             activeTab === "recording"
-              ? "bg-blue-600 text-white shadow"
+              ? "bg-blue-600 text-white shadow-sm"
               : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
@@ -210,7 +210,7 @@ function App() {
           }}
           className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
             activeTab === "files"
-              ? "bg-blue-600 text-white shadow"
+              ? "bg-blue-600 text-white shadow-sm"
               : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
@@ -222,7 +222,7 @@ function App() {
           }}
           className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
             activeTab === "settings"
-              ? "bg-blue-600 text-white shadow"
+              ? "bg-blue-600 text-white shadow-sm"
               : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >

@@ -20,7 +20,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   setTheme,
 }) => {
   return (
-    <section className="flex flex-col bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg max-w-md mx-auto w-full transition-colors duration-300 animate-fade-in">
+    <section className="flex flex-col bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-md mx-auto w-full transition-colors duration-300 animate-fade-in">
       <h2 className="text-lg font-bold text-slate-850 dark:text-slate-100 mb-6 pb-2 border-b border-slate-200 dark:border-slate-700 text-left">
         Recording Settings
       </h2>
@@ -61,7 +61,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               onClick={() => setTheme(t)}
               className={`flex-1 py-2 text-xs font-bold rounded-lg cursor-pointer transition-all duration-200 capitalize flex items-center justify-center gap-1.5 ${
                 theme === t
-                  ? "bg-blue-600 text-white shadow"
+                  ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >

@@ -524,7 +524,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
       {/* 4. Large Blue Pill Button */}
       <button
         onClick={togglePlay}
-        className="bg-[#54b4ff] hover:bg-[#469eef] text-white w-64 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all shadow-md mt-6 cursor-pointer"
+        className="bg-[#54b4ff] hover:bg-[#469eef] text-white w-64 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all shadow-sm mt-6 cursor-pointer"
         title={isPlaying ? "Pause playback" : "Start playback"}
       >
         {isPlaying ? (
@@ -567,7 +567,7 @@ export const WaveformEditor: React.FC<WaveformEditorProps> = ({
       {/* 6. Action Button for Trim */}
       <button
         onClick={() => onTrim(startMs, endMs)}
-        className="w-full mt-5 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition-colors rounded-xl text-white font-bold cursor-pointer text-sm shadow-md"
+        className="w-full mt-5 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition-colors rounded-xl text-white font-bold cursor-pointer text-sm shadow-sm"
       >
         Trim Selected Area
       </button>

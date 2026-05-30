@@ -104,7 +104,7 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
               >
                 <button
                   onClick={isPaused ? resumeRecording : pauseRecording}
-                  className={`w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white flex items-center justify-center cursor-pointer shadow-lg active:scale-95 transition-all duration-300 ${
+                  className={`w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white flex items-center justify-center cursor-pointer shadow-sm active:scale-95 transition-all duration-300 ${
                     isPaused
                       ? "bg-emerald-600 hover:bg-emerald-500"
                       : "bg-amber-600 hover:bg-amber-500"
@@ -132,7 +132,7 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
               >
                 <button
                   onClick={handleToggleRecording}
-                  className="w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white bg-red-600 hover:bg-red-500 flex items-center justify-center cursor-pointer shadow-lg active:scale-95 transition-all duration-300"
+                  className="w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white bg-red-600 hover:bg-red-500 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 transition-all duration-300"
                   title="Stop and save recording"
                 >
                   {/* Stop white square icon */}
@@ -144,7 +144,7 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
         ) : (
           <button
             onClick={handleToggleRecording}
-            className="w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white bg-red-600 hover:bg-red-500 active:scale-95 hover:scale-105 transition-all duration-300 cursor-pointer shadow-xl flex items-center justify-center"
+            className="w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white bg-red-600 hover:bg-red-500 active:scale-95 hover:scale-105 transition-all duration-300 cursor-pointer shadow-sm flex items-center justify-center"
             title="Start recording"
           />
         )}

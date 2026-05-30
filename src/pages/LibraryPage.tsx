@@ -19,7 +19,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   }, [refreshFiles]);
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg transition-colors duration-300 w-full animate-fade-in">
+    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors duration-300 w-full animate-fade-in">
       <h2 className="text-lg font-bold text-slate-850 dark:text-slate-200 mb-4 pb-2 border-b border-slate-200 dark:border-slate-700 text-left">
         Recorded Library
       </h2>

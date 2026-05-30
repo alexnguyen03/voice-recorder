@@ -35,10 +35,10 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg transition-colors duration-300 w-full text-left animate-fade-in">
+    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors duration-300 w-full text-left animate-fade-in">
       <button
         onClick={onBack}
-        className="mb-6 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow flex items-center gap-1.5 active:scale-95"
+        className="mb-6 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5 active:scale-95"
       >
         ⬅️ Back to Recordings List
       </button>
