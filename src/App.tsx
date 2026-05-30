@@ -3,6 +3,7 @@ import { useAudioRecorder } from "./hooks/useAudioRecorder";
 import { AudioVisualizer } from "./components/visualizer/AudioVisualizer";
 import { WaveformEditor } from "./components/editor/WaveformEditor";
 import { AudioService } from "./services/audioService";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import "./App.css";
 
 function App() {
@@ -23,6 +24,14 @@ function App() {
   const [bass, setBass] = useState(0.5);
   const [treble, setTreble] = useState(0.5);
   const [statusMessage, setStatusMessage] = useState("");
+
+  const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
+
+  const audioUrl = recordedFilePath
+    ? isTauri
+      ? convertFileSrc(recordedFilePath)
+      : "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+    : "";
 
   const handleToggleRecording = async () => {
     if (isRecording) {
@@ -138,6 +147,21 @@ function App() {
           <h2 className="text-lg font-bold text-slate-100 mb-4 border-b border-slate-700 pb-2">
             File Processing & Editing
           </h2>
+
+          {/* Live Playback Preview */}
+          <div className="mb-6 bg-slate-900/60 p-4 rounded-lg border border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="text-left">
+              <h4 className="text-sm font-semibold text-slate-200">Recording Playback</h4>
+              <p className="text-xs text-slate-400 mt-1 truncate max-w-xs md:max-w-md" title={recordedFilePath}>
+                Path: {recordedFilePath}
+              </p>
+            </div>
+            <audio
+              src={audioUrl}
+              controls
+              className="w-full md:max-w-md h-9 rounded bg-slate-950 border border-slate-700 accent-blue-500"
+            />
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Lọc tiếng ồn & EQ */}
