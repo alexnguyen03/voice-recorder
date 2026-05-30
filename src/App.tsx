@@ -326,8 +326,8 @@ function App() {
             </button>
           )}
 
-          {statusMessage && (
-            <div className="mt-6 text-xs text-sky-400 font-semibold text-center break-all bg-slate-900/60 p-2.5 px-4 rounded border border-slate-700/50 w-full">
+          {statusMessage && statusMessage.toLowerCase().includes("error") && (
+            <div className="mt-6 text-xs text-red-400 font-semibold text-center break-all bg-red-950/20 p-2.5 px-4 rounded border border-red-500/35 w-full">
               {statusMessage}
             </div>
           )}
@@ -519,8 +519,8 @@ function App() {
                 </div>
               </div>
 
-              {statusMessage && (
-                <div className="mt-6 text-xs text-sky-400 font-semibold text-center break-all bg-slate-900/60 p-2.5 px-4 rounded border border-slate-700/50">
+              {statusMessage && statusMessage.toLowerCase().includes("error") && (
+                <div className="mt-6 text-xs text-red-400 font-semibold text-center break-all bg-red-950/20 p-2.5 px-4 rounded border border-red-500/35">
                   {statusMessage}
                 </div>
               )}
