@@ -301,18 +301,12 @@ function App() {
                 Voice Detail Studio
               </h2>
 
-              {/* Audio Playback Media Player */}
-              <div className="mb-6 bg-slate-900/80 p-4 rounded-xl border border-slate-700/80 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
-                <div className="text-left overflow-hidden w-full md:max-w-xs">
-                  <h4 className="text-sm font-bold text-slate-200 truncate">{getFileName(selectedFile)}</h4>
-                  <p className="text-[10px] text-slate-500 mt-1 truncate" title={selectedFile}>
-                    Path: {selectedFile}
-                  </p>
-                </div>
-                <audio
-                  src={audioUrl}
-                  controls
-                  className="w-full md:max-w-md h-9 rounded bg-slate-950 border border-slate-700 accent-blue-500"
+              {/* High-fidelity Waveform Player & Editor */}
+              <div className="mb-6 bg-slate-900/40 p-6 rounded-2xl border border-slate-700/60">
+                <WaveformEditor
+                  filePath={selectedFile}
+                  audioUrl={audioUrl}
+                  onTrim={handleTrim}
                 />
               </div>
 
@@ -324,13 +318,12 @@ function App() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Voice Detail Filters */}
-                <div className="flex flex-col justify-between p-4 bg-slate-900/40 rounded-xl border border-slate-700/60">
+              {/* Voice Detail Filters */}
+              <div className="p-6 bg-slate-900/40 rounded-2xl border border-slate-700/60 mb-6">
+                <h3 className="text-sm font-bold text-slate-355 mb-4 text-left">Voice Detail Filters</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-350 mb-4">Voice Detail Filters</h3>
-                    
-                    <div className="flex items-center gap-2 mb-5">
+                    <div className="flex items-center gap-2.5 mb-5">
                       <input
                         type="checkbox"
                         id="noise-cancellation"
@@ -360,7 +353,9 @@ function App() {
                         className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-950 rounded-lg appearance-none"
                       />
                     </div>
+                  </div>
 
+                  <div>
                     <div className="mb-6">
                       <div className="flex justify-between items-center mb-1">
                         <label className="block text-xs font-semibold text-slate-400">
@@ -378,20 +373,14 @@ function App() {
                         className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-950 rounded-lg appearance-none"
                       />
                     </div>
+
+                    <button
+                      onClick={handleApplyEffects}
+                      className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 transition-colors rounded-lg text-white font-bold cursor-pointer text-sm shadow-sm"
+                    >
+                      Apply Voice Filters
+                    </button>
                   </div>
-
-                  <button
-                    onClick={handleApplyEffects}
-                    className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 transition-colors rounded-lg text-white font-bold cursor-pointer text-sm shadow-sm"
-                  >
-                    Apply Voice Filters
-                  </button>
-                </div>
-
-                {/* Trình Trim biên tập */}
-                <div className="p-4 bg-slate-900/40 rounded-xl border border-slate-700/60">
-                  <h3 className="text-sm font-bold text-slate-350 mb-4">Audio Editing & Trimming</h3>
-                  <WaveformEditor filePath={selectedFile} onTrim={handleTrim} />
                 </div>
               </div>
 
