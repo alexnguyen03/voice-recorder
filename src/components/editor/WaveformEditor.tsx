@@ -155,8 +155,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       gainNodeRef.current.gain.value = vol >= 0.5 ? 1.0 + (vol - 0.5) * 6.0 : 0.25 + (vol / 0.5) * 0.75;
     }
       
-    // Mic EQ Enhancement (Highpass at 20Hz, Lowpass at 9000Hz, Notches at 50Hz/60Hz)
-    if (rumbleNodeRef.current) rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 20 : 0;
+    // Mic EQ Enhancement (Highpass at 85Hz, Lowpass at 9000Hz, Notches at 50Hz/60Hz)
+    if (rumbleNodeRef.current) rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
     if (hissNodeRef.current) hissNodeRef.current.frequency.value = filters.micEqEnhancement ? 9000 : 24000;
     if (notch50NodeRef.current) notch50NodeRef.current.frequency.value = filters.micEqEnhancement ? 50 : 24000;
     if (notch60NodeRef.current) notch60NodeRef.current.frequency.value = filters.micEqEnhancement ? 60 : 24000;
@@ -545,30 +545,45 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
     ctx.clearRect(0, 0, width, height);
 
+    // AudioContext sample rate is usually 44100 or 48000. Nyquist is half of that.
+    const nyquist = (audioCtxRef.current?.sampleRate || 44100) / 2;
+    
+    // Map frequencies from 20Hz to 20000Hz logarithmically onto the canvas width.
+    const minFreq = 20;
+    const maxFreq = 20000;
+    
+    const getLogX = (freq: number) => {
+      if (freq <= minFreq) return 0;
+      if (freq >= maxFreq) return width;
+      return (Math.log10(freq / minFreq) / Math.log10(maxFreq / minFreq)) * width;
+    };
+
     // Draw glowing frequency bars
-    const barWidth = (width / bufferLength) * 2.5; // Scale up to fill the space
-    let barHeight;
-    let x = 0;
-
     for (let i = 0; i < bufferLength; i++) {
-      barHeight = dataArray[i] / 255 * height;
-
-      // Premium styling: Gradient that changes based on frequency (Bass = Purple, Treble = Blue/Cyan)
-      const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
-      gradient.addColorStop(0, 'rgba(124, 58, 237, 0.2)'); // Violet base
-      gradient.addColorStop(1, 'rgba(56, 189, 248, 0.9)'); // Sky blue top
-
-      ctx.fillStyle = gradient;
+      const freq = (i * nyquist) / bufferLength;
+      if (freq > maxFreq) break;
       
-      // Slight rounding on top of bars
-      ctx.beginPath();
-      ctx.roundRect(x, height - barHeight, barWidth - 1, barHeight, [2, 2, 0, 0]);
-      ctx.fill();
-
-      x += barWidth;
+      const nextFreq = ((i + 1) * nyquist) / bufferLength;
       
-      // Stop early if we exceeded width
-      if (x > width) break;
+      const x = getLogX(Math.max(minFreq, freq));
+      const nextX = getLogX(Math.max(minFreq, nextFreq));
+      const barWidth = Math.max(1, nextX - x); // ensure at least 1px wide
+      
+      const barHeight = (dataArray[i] / 255) * height;
+      
+      if (barHeight > 0 && freq >= minFreq) {
+        // Premium styling: Gradient that changes based on frequency (Bass = Purple, Treble = Blue/Cyan)
+        const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
+        gradient.addColorStop(0, 'rgba(124, 58, 237, 0.2)'); // Violet base
+        gradient.addColorStop(1, 'rgba(56, 189, 248, 0.9)'); // Sky blue top
+
+        ctx.fillStyle = gradient;
+        
+        // Slight rounding on top of bars
+        ctx.beginPath();
+        ctx.roundRect(x, height - barHeight, barWidth - 0.5, barHeight, [2, 2, 0, 0]);
+        ctx.fill();
+      }
     }
   };
 
@@ -622,7 +637,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         
         const rumble = ctx.createBiquadFilter();
         rumble.type = 'highpass';
-        rumble.frequency.value = filters?.micEqEnhancement ? 20 : 0;
+        rumble.frequency.value = filters?.micEqEnhancement ? 85 : 0;
         rumble.Q.value = 0.707;
         rumbleNodeRef.current = rumble;
 
@@ -866,14 +881,12 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
             className="w-full h-full block"
           />
           {/* Frequency labels overlay */}
-          <div className="absolute bottom-0 w-full flex justify-between px-2 text-[8px] text-slate-400 dark:text-slate-600 font-medium select-none pb-0.5">
-            <span>0Hz</span>
-            <span>20Hz</span>
-            <span>250Hz</span>
-            <span>1kHz</span>
-            <span>4kHz</span>
-            <span>10kHz</span>
-            <span>20kHz</span>
+          <div className="absolute bottom-0 w-full h-full pointer-events-none text-[8px] text-slate-400 dark:text-slate-600 font-medium select-none">
+            <span className="absolute bottom-0.5" style={{ left: '0%' }}>20Hz</span>
+            <span className="absolute bottom-0.5 -translate-x-1/2" style={{ left: '23.3%' }}>100Hz</span>
+            <span className="absolute bottom-0.5 -translate-x-1/2" style={{ left: '56.6%' }}>1kHz</span>
+            <span className="absolute bottom-0.5 -translate-x-1/2" style={{ left: '89.9%' }}>10kHz</span>
+            <span className="absolute bottom-0.5 right-0">20kHz</span>
           </div>
         </div>
       </div>
