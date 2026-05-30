@@ -38,6 +38,11 @@ graph TD
   * UI state management and service orchestration must live inside custom hooks (`src/hooks/`).
 * **CSS Modules & Variables:** Enforce pure CSS and CSS variables for theming and dark mode. Do not inject arbitrary utility styles.
 
+### C. Premium UI & Design Guidelines
+* **Borderless Aesthetics:** Rely strictly on background contrast (differentiation between layers/cards) instead of visible borders (`border border-slate-...`) for containers, cards, and buttons to achieve a modern, clean, flat borderless design.
+* **Consistently Rounded Corners:** Prefer small rounded corners (`rounded-sm`) consistently across all page panels, components, inputs, and controls to maintain a sleek, unified, professional industrial design.
+* **No Emoji Icons:** Do not use raw emojis (`📁`, `🎵`, `➡️` etc.) for visual accents or icons in UI layouts. Always import and use high-quality icons from `lucide-react` to keep the interface premium, elegant, and corporate-ready.
+
 ### B. Rust Backend
 * **Strictly No Unwrap:** Do not use `.unwrap()` or `.expect()`. Handle all errors gracefully with `Result<T, E>`.
 * **Explicit Error Domains:** Use standard error mapping or `thiserror` to map all backend errors to a custom, JSON-serializable `AppError` before returning them over the IPC bridge.

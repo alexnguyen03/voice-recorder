@@ -37,7 +37,7 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
         {/* 1. Start Record Button (Idle State) */}
         <button
           onClick={handleToggleRecording}
-          className={`absolute w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white bg-red-600 hover:bg-red-500 active:scale-95 hover:scale-105 transition-all duration-500 ease-out transform cursor-pointer shadow-sm flex items-center justify-center ${
+          className={`absolute w-24 h-24 rounded-full bg-red-600 hover:bg-red-500 active:scale-95 hover:scale-105 transition-all duration-500 ease-out transform cursor-pointer shadow-sm flex items-center justify-center ${
             isRecording || isPaused
               ? "opacity-0 scale-50 pointer-events-none"
               : "opacity-100 scale-100 pointer-events-auto"
@@ -59,7 +59,7 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
               className={`h-24 rounded-full flex items-center overflow-hidden transition-all duration-500 ease-out ${
                 showDiscardConfirm
                   ? "w-64 bg-slate-100 dark:bg-slate-900/90 p-2 px-3.5 border-0"
-                  : "w-24 border-[10px] border-slate-200 dark:border-white bg-rose-600 hover:bg-rose-500 dark:bg-rose-900 dark:hover:bg-rose-800 p-0"
+                  : "w-24 bg-rose-600 hover:bg-rose-500 dark:bg-rose-900 dark:hover:bg-rose-800 p-0"
               }`}
             >
               {showDiscardConfirm ? (
@@ -124,7 +124,7 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
             >
               <button
                 onClick={isPaused ? resumeRecording : pauseRecording}
-                className={`w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white flex items-center justify-center cursor-pointer shadow-sm active:scale-95 transition-all duration-300 ${
+                className={`w-24 h-24 rounded-full flex items-center justify-center cursor-pointer shadow-sm active:scale-95 transition-all duration-300 ${
                   isPaused
                     ? "bg-emerald-600 hover:bg-emerald-500"
                     : "bg-amber-600 hover:bg-amber-500"
@@ -153,7 +153,7 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
             >
               <button
                 onClick={handleToggleRecording}
-                className="w-24 h-24 rounded-full border-[10px] border-slate-200 dark:border-white bg-red-600 hover:bg-red-500 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 transition-all duration-300"
+                className="w-24 h-24 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 transition-all duration-300"
                 title="Stop and save recording"
               >
                 {/* Stop white square icon */}
