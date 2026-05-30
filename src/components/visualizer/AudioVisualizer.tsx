@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 
 interface AudioVisualizerProps {
   isRecording: boolean;
+  isPaused?: boolean;
   color?: string;
   backgroundColor?: string;
 }
@@ -20,16 +21,26 @@ interface AmplitudeSample {
  */
 export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   isRecording,
+  isPaused = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
 
   const numBars = 180;
   const amplitudesRef = useRef<AmplitudeSample[]>([]);
-  const startTimeRef = useRef<number>(0);
+  
+  // Real-time delta accumulator to freeze the timeline duration and playhead during pause
+  const activeTimeRef = useRef<number>(0);
+  const lastUpdateTimeRef = useRef<number>(0);
+  
   const lastMockTimeRef = useRef<number>(0);
   
   const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
+
+  const isPausedRef = useRef<boolean>(false);
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
 
   // Helper: Format seconds to MM:SS
   const formatTime = (secs: number): string => {
@@ -45,19 +56,20 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     let active = true;
 
     if (isRecording) {
-      startTimeRef.current = performance.now();
+      activeTimeRef.current = 0;
+      lastUpdateTimeRef.current = performance.now();
       lastMockTimeRef.current = performance.now();
       amplitudesRef.current = [];
 
       const setupListener = async () => {
         try {
           const unlisten = await listen<number>("audio-amplitude", (event) => {
-            if (!active) return;
+            if (!active || isPausedRef.current) return;
             const amp = event.payload;
             
             // Boost the signal slightly to match standard playback waveform amplitudes
             const boosted = Math.min(0.95, amp * 1.6);
-            const timeOffset = (performance.now() - startTimeRef.current) / 1000;
+            const timeOffset = activeTimeRef.current;
             
             amplitudesRef.current.push({
               time: timeOffset,
@@ -92,8 +104,6 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     let currentSpeechAmp = 0.04;
 
     const draw = () => {
-      if (!isRecording) return;
-
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
 
@@ -127,7 +137,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       ctx.fillRect(0, 0, cssWidth, cssHeight);
 
       // Browser mock preview generator (runs at ~30Hz inside the frame draw loop)
-      if (!isTauri) {
+      if (isRecording && !isPausedRef.current && !isTauri) {
         const now = performance.now();
         if (now - lastMockTimeRef.current >= 33) {
           lastMockTimeRef.current = now;
@@ -139,7 +149,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             currentSpeechAmp = currentSpeechAmp * 0.8 + 0.02 * 0.2;
           }
           const boosted = Math.min(0.95, currentSpeechAmp * 1.6);
-          const timeOffset = (now - startTimeRef.current) / 1000;
+          const timeOffset = activeTimeRef.current;
           amplitudesRef.current.push({
             time: timeOffset,
             val: Math.max(0.03, boosted),
@@ -147,8 +157,17 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         }
       }
 
-      // Calculate elapsed time and rolling viewport boundaries
-      const elapsedSec = (performance.now() - startTimeRef.current) / 1000;
+      // Calculate elapsed time based on active accumulator delta
+      let elapsedSec = 0;
+      if (isRecording) {
+        const now = performance.now();
+        if (!isPausedRef.current) {
+          const delta = (now - lastUpdateTimeRef.current) / 1000;
+          activeTimeRef.current += delta;
+        }
+        lastUpdateTimeRef.current = now;
+        elapsedSec = activeTimeRef.current;
+      }
       
       // Viewport width is fixed at 10 seconds. Playhead is always locked at 50% width (middle).
       const viewStart = elapsedSec - 5;
@@ -195,7 +214,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         
         let amp = 0.04;
 
-        if (i > recordedBarsCount) {
+        if (!isRecording) {
+          amp = 0.04;
+        } else if (i > recordedBarsCount) {
           // Unrecorded future region: flat grey bar
           amp = 0.04;
         } else if (i === recordedBarsCount) {
@@ -228,8 +249,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const x = startX + i * (barWidth + spacing);
         const y = centerY - barHeight / 2;
 
-        const isRecorded = i <= recordedBarsCount && barTimeEnd > 0;
-        ctx.fillStyle = isRecorded ? "#54b4ff" : "#e5e7eb"; // blue for recorded, grey for future
+        const isRecorded = isRecording && i <= recordedBarsCount && barTimeEnd > 0;
+        ctx.fillStyle = isRecorded ? "#54b4ff" : "#e5e7eb"; // blue for recorded, grey for future/idle
 
         ctx.beginPath();
         if (ctx.roundRect) {
@@ -261,7 +282,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       ctx.arc(headX, 117, 3, 0, Math.PI * 2);
       ctx.fill();
 
-      animationRef.current = requestAnimationFrame(draw);
+      if (isRecording) {
+        animationRef.current = requestAnimationFrame(draw);
+      }
     };
 
     draw();
@@ -271,7 +294,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isRecording]);
+  }, [isRecording, isPaused]);
 
   return (
     <div className="w-full flex flex-col items-center">

@@ -263,4 +263,30 @@ impl AudioRecorder for CpalRecorder {
     fn is_recording(&self) -> bool {
         self.is_recording
     }
+
+    fn pause_recording(&mut self) -> Result<(), AppError> {
+        if !self.is_recording {
+            return Ok(());
+        }
+        if let Some(ref stream) = self.stream {
+            stream.pause().map_err(|e| AppError {
+                code: ErrorCode::InitializationFailed,
+                message: format!("Failed to pause stream: {}", e),
+            })?;
+        }
+        Ok(())
+    }
+
+    fn resume_recording(&mut self) -> Result<(), AppError> {
+        if !self.is_recording {
+            return Ok(());
+        }
+        if let Some(ref stream) = self.stream {
+            stream.play().map_err(|e| AppError {
+                code: ErrorCode::InitializationFailed,
+                message: format!("Failed to resume stream: {}", e),
+            })?;
+        }
+        Ok(())
+    }
 }

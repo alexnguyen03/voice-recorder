@@ -17,6 +17,12 @@ pub trait AudioRecorder: Send + Sync {
 
     /// Kiểm tra xem thiết bị có đang trong quá trình ghi âm hay không.
     fn is_recording(&self) -> bool;
+
+    /// Tạm dừng ghi âm.
+    fn pause_recording(&mut self) -> Result<(), AppError>;
+
+    /// Tiếp tục ghi âm.
+    fn resume_recording(&mut self) -> Result<(), AppError>;
 }
 
 /// Trait định nghĩa bộ xử lý tín hiệu số (DSP) để lọc tiếng ồn và tăng chi tiết giọng nói.

@@ -3,6 +3,7 @@ import { AudioService, DeviceInfo, RecordConfig } from "../services/audioService
 
 export interface UseAudioRecorderReturn {
   isRecording: boolean;
+  isPaused: boolean;
   devices: DeviceInfo[];
   selectedDeviceId: string;
   recordedFilePath: string | null;
@@ -11,6 +12,9 @@ export interface UseAudioRecorderReturn {
   selectDevice: (deviceId: string) => void;
   startRecording: (sampleRate?: number) => Promise<void>;
   stopRecording: () => Promise<string | null>;
+  pauseRecording: () => Promise<void>;
+  resumeRecording: () => Promise<void>;
+  discardRecording: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -20,6 +24,7 @@ export interface UseAudioRecorderReturn {
  */
 export const useAudioRecorder = (): UseAudioRecorderReturn => {
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [recordedFilePath, setRecordedFilePath] = useState<string | null>(null);
@@ -81,11 +86,52 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
     try {
       const path = await AudioService.stopRecording();
       setIsRecording(false);
+      setIsPaused(false);
       setRecordedFilePath(path);
       return path;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error stopping audio recording");
       return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const pauseRecording = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await AudioService.pauseRecording();
+      setIsPaused(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error pausing audio recording");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const resumeRecording = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await AudioService.resumeRecording();
+      setIsPaused(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error resuming audio recording");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const discardRecording = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await AudioService.discardRecording();
+      setIsRecording(false);
+      setIsPaused(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error discarding audio recording");
     } finally {
       setLoading(false);
     }
@@ -97,6 +143,7 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
 
   return {
     isRecording,
+    isPaused,
     devices,
     selectedDeviceId,
     recordedFilePath,
@@ -105,6 +152,9 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
     selectDevice,
     startRecording,
     stopRecording,
+    pauseRecording,
+    resumeRecording,
+    discardRecording,
     clearError,
   };
 };

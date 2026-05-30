@@ -95,6 +95,57 @@ export const AudioService = {
   },
 
   /**
+   * Pauses live audio recording stream.
+   */
+  async pauseRecording(): Promise<void> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating pause recording.");
+      return;
+    }
+
+    try {
+      await invoke("pause_audio_recording");
+    } catch (error) {
+      console.error("Failed to pause recording:", error);
+      throw new Error(String(error));
+    }
+  },
+
+  /**
+   * Resumes live audio recording stream.
+   */
+  async resumeRecording(): Promise<void> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating resume recording.");
+      return;
+    }
+
+    try {
+      await invoke("resume_audio_recording");
+    } catch (error) {
+      console.error("Failed to resume recording:", error);
+      throw new Error(String(error));
+    }
+  },
+
+  /**
+   * Discards the active audio recording stream without saving.
+   */
+  async discardRecording(): Promise<void> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Simulating discard recording.");
+      return;
+    }
+
+    try {
+      await invoke("discard_audio_recording");
+    } catch (error) {
+      console.error("Failed to discard recording:", error);
+      throw new Error(String(error));
+    }
+  },
+
+  /**
    * Trims the audio file between starting and ending millisecond ranges.
    */
   async trimAudio(filePath: string, startMs: number, endMs: number): Promise<string> {

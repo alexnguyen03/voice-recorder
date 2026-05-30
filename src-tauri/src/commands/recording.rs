@@ -95,3 +95,28 @@ pub fn list_recorded_files(app: AppHandle) -> Result<Vec<String>, String> {
     files.sort_by(|a, b| b.cmp(a));
     Ok(files)
 }
+
+#[tauri::command]
+pub fn pause_audio_recording(
+    state: State<'_, RecorderState>,
+) -> Result<(), String> {
+    let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
+    recorder.pause_recording().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn resume_audio_recording(
+    state: State<'_, RecorderState>,
+) -> Result<(), String> {
+    let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
+    recorder.resume_recording().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn discard_audio_recording(
+    state: State<'_, RecorderState>,
+) -> Result<(), String> {
+    let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
+    let _ = recorder.stop_recording().map_err(|e| e.to_string())?;
+    Ok(())
+}

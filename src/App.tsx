@@ -8,19 +8,22 @@ import "./App.css";
 
 function App() {
   // Tabs: 'recording' | 'files'
-  const [activeTab, setActiveTab] = useState<"recording" | "files">("recording");
+  const [activeTab, setActiveTab] = useState<"recording" | "files" | "settings">("recording");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [filesList, setFilesList] = useState<string[]>([]);
-  const [recordingTime, setRecordingTime] = useState(0);
 
   const {
     isRecording,
+    isPaused,
     devices,
     selectedDeviceId,
     error,
     selectDevice,
     startRecording,
     stopRecording,
+    pauseRecording,
+    resumeRecording,
+    discardRecording,
     clearError,
   } = useAudioRecorder();
 
@@ -28,6 +31,7 @@ function App() {
   const [bass, setBass] = useState(0.5);
   const [treble, setTreble] = useState(0.5);
   const [statusMessage, setStatusMessage] = useState("");
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
 
@@ -45,12 +49,6 @@ function App() {
     return parts[parts.length - 1];
   };
 
-  // Helper: Format seconds to MM:SS
-  const formatTime = (secs: number): string => {
-    const minutes = Math.floor(secs / 60);
-    const seconds = secs % 60;
-    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  };
 
   // Scan and refresh recordings from documents directory
   const refreshFiles = useCallback(async () => {
@@ -62,19 +60,6 @@ function App() {
     }
   }, []);
 
-  // Tick timer up when actively recording
-  useEffect(() => {
-    let interval: any = null;
-    if (isRecording) {
-      setRecordingTime(0);
-      interval = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-    } else {
-      clearInterval(interval);
-    }
-    return () => clearInterval(interval);
-  }, [isRecording]);
 
   // Load files list on mount
   useEffect(() => {
@@ -82,6 +67,7 @@ function App() {
   }, [refreshFiles]);
 
   const handleToggleRecording = async () => {
+    setShowDiscardConfirm(false);
     if (isRecording) {
       setStatusMessage("Stopping and saving recording...");
       const path = await stopRecording();
@@ -96,6 +82,29 @@ function App() {
       if (!error) {
         setStatusMessage("Recording active");
       }
+    }
+  };
+
+  const handleDiscardRecording = async () => {
+    setShowDiscardConfirm(true);
+    if (isRecording && !isPaused) {
+      try {
+        await pauseRecording();
+      } catch (err) {
+        console.error("Failed to pause recording on discard confirmation:", err);
+      }
+    }
+  };
+
+  const executeDiscard = async () => {
+    setStatusMessage("Discarding active recording...");
+    try {
+      await discardRecording();
+      setStatusMessage("Recording discarded.");
+    } catch (err) {
+      setStatusMessage(`Discard error: ${err}`);
+    } finally {
+      setShowDiscardConfirm(false);
     }
   };
 
@@ -151,7 +160,7 @@ function App() {
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
-          🎙️ Record Voice
+          🎙️ Record
         </button>
         <button
           onClick={() => {
@@ -166,6 +175,18 @@ function App() {
         >
           📁 Saved Recordings ({filesList.length})
         </button>
+        <button
+          onClick={() => {
+            setActiveTab("settings");
+          }}
+          className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
+            activeTab === "settings"
+              ? "bg-blue-600 text-white shadow"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          ⚙️ Settings
+        </button>
       </div>
 
       {error && (
@@ -177,19 +198,159 @@ function App() {
 
       {/* TAB 1: Live Voice Recording */}
       {activeTab === "recording" && (
-        <section className="flex flex-col items-center bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-lg max-w-md mx-auto w-full">
-          <h2 className="text-lg font-bold text-slate-200 mb-6 w-full text-center">Voice Capturing Studio</h2>
-
-          {/* Device configuration */}
+        <section className="flex flex-col items-center bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-lg max-w-lg mx-auto w-full">
+          {/* Waveform Visualizer shown always */}
           <div className="w-full mb-8">
-            <label className="block text-xs font-semibold text-slate-400 mb-2 text-left">
-              Input Microphone
+            <AudioVisualizer isRecording={isRecording} isPaused={isPaused} />
+          </div>
+
+          {isRecording || isPaused ? (
+            <div className="flex items-center justify-center h-20 w-full transition-all duration-500">
+              <div className={`flex items-center justify-center transition-all duration-500 ${showDiscardConfirm ? 'gap-0' : 'gap-6'}`}>
+                {/* Discard Action Selector */}
+                <div
+                  className={`h-18 rounded-full border flex items-center overflow-hidden transition-all duration-500 ease-out ${
+                    showDiscardConfirm
+                      ? "w-64 border-rose-500/50 bg-slate-900/90 p-2 px-3.5"
+                      : "w-18 border-rose-950 bg-rose-900 hover:bg-rose-800 p-0"
+                  }`}
+                >
+                  {showDiscardConfirm ? (
+                    <div className="flex items-center justify-between w-full transition-all duration-300">
+                      {/* Keep Recording / Cancel Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDiscardConfirm(false);
+                        }}
+                        className="w-12 h-12 rounded-full border border-slate-700 bg-slate-800 hover:bg-slate-700 flex items-center justify-center cursor-pointer shadow active:scale-95 transition-all duration-200 text-slate-300 flex-shrink-0"
+                        title="Keep recording"
+                      >
+                        <svg className="w-5 h-5 fill-none stroke-current" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+
+                      {/* Discard Title text inside the pill */}
+                      <span className="text-xs font-bold text-rose-400 uppercase tracking-widest text-center select-none px-2 whitespace-nowrap">
+                        Discard?
+                      </span>
+
+                      {/* Discard / Confirm Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          executeDiscard();
+                        }}
+                        className="w-12 h-12 rounded-full border border-rose-800 bg-rose-600 hover:bg-rose-500 flex items-center justify-center cursor-pointer shadow active:scale-95 transition-all duration-200 text-white flex-shrink-0"
+                        title="Confirm discard"
+                      >
+                        <svg className="w-5 h-5 fill-none stroke-current" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleDiscardRecording}
+                      className="w-full h-full flex items-center justify-center cursor-pointer text-rose-100 focus:outline-none"
+                      title="Discard recording"
+                    >
+                      {/* Trash icon */}
+                      <svg className="w-6 h-6 fill-none stroke-current" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18" />
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        <line x1="10" y1="11" x2="10" y2="17" />
+                        <line x1="14" y1="11" x2="14" y2="17" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Pause / Resume Button */}
+                <div
+                  className={`transition-all duration-500 ease-out overflow-hidden flex items-center justify-center ${
+                    showDiscardConfirm ? "w-0 opacity-0 pointer-events-none" : "w-18 opacity-100"
+                  }`}
+                >
+                  <button
+                    onClick={isPaused ? resumeRecording : pauseRecording}
+                    className={`w-18 h-18 rounded-full border-4 flex items-center justify-center cursor-pointer shadow-lg active:scale-95 transition-all duration-300 ${
+                      isPaused
+                        ? "bg-emerald-600 hover:bg-emerald-500 border-emerald-800"
+                        : "bg-amber-600 hover:bg-amber-500 border-amber-800"
+                    }`}
+                    title={isPaused ? "Resume recording" : "Pause recording"}
+                  >
+                    {isPaused ? (
+                      // Resume play triangle icon
+                      <svg className="w-6 h-6 fill-current text-white pl-1" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    ) : (
+                      // Pause double bars icon
+                      <svg className="w-6 h-6 fill-current text-white" viewBox="0 0 24 24">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                {/* Stop Button */}
+                <div
+                  className={`transition-all duration-500 ease-out overflow-hidden flex items-center justify-center ${
+                    showDiscardConfirm ? "w-0 opacity-0 pointer-events-none" : "w-18 opacity-100"
+                  }`}
+                >
+                  <button
+                    onClick={handleToggleRecording}
+                    className="w-18 h-18 rounded-full border-4 border-red-800 bg-red-600 hover:bg-red-500 flex items-center justify-center cursor-pointer shadow-lg active:scale-95 transition-all duration-300"
+                    title="Stop and save recording"
+                  >
+                    {/* Stop white square icon */}
+                    <div className="w-6 h-6 bg-white rounded-md" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleToggleRecording}
+              className="w-24 h-24 rounded-full border-4 border-blue-800 bg-blue-600 hover:bg-blue-500 flex items-center justify-center cursor-pointer shadow-lg active:scale-95 transition-all duration-300"
+              title="Start recording"
+            >
+              {/* Record red circle icon */}
+              <div className="w-8 h-8 bg-red-500 rounded-full" />
+            </button>
+          )}
+
+          {statusMessage && (
+            <div className="mt-6 text-xs text-sky-400 font-semibold text-center break-all bg-slate-900/60 p-2.5 px-4 rounded border border-slate-700/50 w-full">
+              {statusMessage}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* TAB 3: Settings */}
+      {activeTab === "settings" && (
+        <section className="flex flex-col bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg max-w-md mx-auto w-full">
+          <h2 className="text-lg font-bold text-slate-100 mb-6 pb-2 border-b border-slate-700 text-left">
+            Recording Settings
+          </h2>
+          
+          {/* Device configuration */}
+          <div className="w-full mb-6 text-left">
+            <label className="block text-xs font-semibold text-slate-400 mb-2">
+              Input Microphone Device
             </label>
             <select
               value={selectedDeviceId}
               onChange={(e) => selectDevice(e.target.value)}
               disabled={isRecording}
-              className="w-full p-2.5 px-3 rounded bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-blue-500 text-sm cursor-pointer"
+              className="w-full p-3 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-blue-500 text-sm cursor-pointer shadow-sm"
             >
               {devices.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -197,48 +358,22 @@ function App() {
                 </option>
               ))}
             </select>
-          </div>
-
-          {/* Active Timer Display */}
-          <div className="mb-6 flex flex-col items-center">
-            <div className={`text-4xl font-mono font-extrabold tracking-widest ${isRecording ? "text-red-500 animate-pulse" : "text-slate-400"}`}>
-              {formatTime(recordingTime)}
-            </div>
-            <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-1">
-              {isRecording ? "Live Duration" : "Ready to Record"}
-            </div>
-          </div>
-
-          {/* Waveform Visualizer shown strictly when recording */}
-          {isRecording && (
-            <div className="w-full mb-8">
-              <AudioVisualizer isRecording={isRecording} color="#ef4444" backgroundColor="#0f172a" />
-            </div>
-          )}
-
-          {/* Circular Recording Trigger Button */}
-          <button
-            onClick={handleToggleRecording}
-            className={`w-24 h-24 rounded-full border-4 flex items-center justify-center cursor-pointer shadow-lg active:scale-95 transition-all duration-300 ${
-              isRecording
-                ? "bg-red-600 hover:bg-red-500 border-red-800 animate-pulse"
-                : "bg-blue-600 hover:bg-blue-500 border-blue-800"
-            }`}
-          >
-            {isRecording ? (
-              // Stop square icon
-              <div className="w-8 h-8 bg-white rounded-md" />
-            ) : (
-              // Record red circle icon
-              <div className="w-8 h-8 bg-red-500 rounded-full" />
+            {isRecording && (
+              <p className="text-[10px] text-amber-400 mt-2">
+                ⚠️ Microphone cannot be changed while recording is active.
+              </p>
             )}
-          </button>
+          </div>
 
-          {statusMessage && (
-            <div className="mt-6 text-xs text-sky-400 font-semibold text-center break-all bg-slate-900/60 p-2.5 px-4 rounded border border-slate-700/50 w-full">
-              {statusMessage}
-            </div>
-          )}
+          <div className="text-left bg-slate-900/40 p-4 rounded-xl border border-slate-700/40">
+            <h4 className="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Audio Properties</h4>
+            <ul className="text-xs text-slate-400 space-y-1.5">
+              <li>• Format: <span className="text-slate-300 font-semibold">WAV (PCM)</span></li>
+              <li>• Sample Rate: <span className="text-slate-300 font-semibold">44,100 Hz</span></li>
+              <li>• Channels: <span className="text-slate-300 font-semibold">Mono (1 channel)</span></li>
+              <li>• Bit Depth: <span className="text-slate-300 font-semibold">16-bit</span></li>
+            </ul>
+          </div>
         </section>
       )}
 
