@@ -306,7 +306,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="w-full relative bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-slate-800/80 rounded-2xl p-6 pt-8 pb-3 shadow-sm select-none">
+      <div className="w-full relative rounded-sm select-none">
         <canvas
           ref={canvasRef}
           className="w-full h-[150px] block"
