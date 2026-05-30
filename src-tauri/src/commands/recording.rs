@@ -1,5 +1,5 @@
-use std::sync::Mutex;
-use tauri::{State, AppHandle, Manager};
+use std::sync::{Arc, Mutex};
+use tauri::{State, AppHandle, Manager, Emitter};
 use crate::core::models::{DeviceInfo, RecordConfig};
 use crate::infra::{CpalRecorder, LocalStorage};
 use crate::core::traits::{AudioRecorder, AudioStorage};
@@ -20,11 +20,19 @@ pub fn list_audio_devices(
 
 #[tauri::command]
 pub fn start_audio_recording(
+    app: AppHandle,
     state: State<'_, RecorderState>,
     config: RecordConfig,
 ) -> Result<(), String> {
     let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
-    recorder.start_recording(&config)
+    
+    // Create Arc-wrapped closure callback to emit real-time amplitude events
+    let app_clone = app.clone();
+    let on_amplitude = Arc::new(move |amplitude: f32| {
+        let _ = app_clone.emit("audio-amplitude", amplitude);
+    });
+
+    recorder.start_recording(&config, Some(on_amplitude))
         .map_err(|e| e.to_string())
 }
 
@@ -60,4 +68,30 @@ pub fn stop_audio_recording(
     storage.save_file(&buffer, &file_path_str).map_err(|e| e.to_string())?;
 
     Ok(file_path_str)
+}
+
+#[tauri::command]
+pub fn list_recorded_files(app: AppHandle) -> Result<Vec<String>, String> {
+    let doc_dir = app.path().document_dir().map_err(|e| format!("Failed to find Documents dir: {}", e))?;
+    let mut recordings_dir = doc_dir;
+    recordings_dir.push("VoiceRecorder");
+
+    if !recordings_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let entries = std::fs::read_dir(recordings_dir).map_err(|e| e.to_string())?;
+    let mut files = Vec::new();
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.is_file() && path.extension().map(|s| s == "wav").unwrap_or(false) {
+                files.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    // Sort newer files (by name which contains timestamp) to the top
+    files.sort_by(|a, b| b.cmp(a));
+    Ok(files)
 }

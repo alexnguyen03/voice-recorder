@@ -5,8 +5,12 @@ pub trait AudioRecorder: Send + Sync {
     /// Lấy danh sách các thiết bị đầu vào (Microphone) khả dụng trên hệ thống.
     fn list_devices(&self) -> Result<Vec<DeviceInfo>, AppError>;
 
-    /// Bắt đầu ghi âm với cấu hình chỉ định.
-    fn start_recording(&mut self, config: &RecordConfig) -> Result<(), AppError>;
+    /// Bắt đầu ghi âm với cấu hình chỉ định và một callback tùy chọn trả về biên độ sóng âm.
+    fn start_recording(
+        &mut self,
+        config: &RecordConfig,
+        on_amplitude: Option<std::sync::Arc<dyn Fn(f32) + Send + Sync + 'static>>,
+    ) -> Result<(), AppError>;
 
     /// Dừng ghi âm và trả về bộ đệm âm thanh PCM thu được.
     fn stop_recording(&mut self) -> Result<AudioBuffer, AppError>;

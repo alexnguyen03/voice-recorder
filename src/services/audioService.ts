@@ -132,4 +132,24 @@ export const AudioService = {
       throw new Error(String(error));
     }
   },
+
+  /**
+   * Scans and returns all recorded WAV file absolute paths inside User's Documents/VoiceRecorder.
+   */
+  async listRecordedFiles(): Promise<string[]> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Returning mock recorded files.");
+      return [
+        "[BROWSER_PREVIEW_MODE] mock_voice_recording_1.wav",
+        "[BROWSER_PREVIEW_MODE] mock_voice_recording_2.wav",
+      ];
+    }
+
+    try {
+      return await invoke<string[]>("list_recorded_files");
+    } catch (error) {
+      console.error("Failed to list recorded files:", error);
+      throw new Error(String(error));
+    }
+  },
 };

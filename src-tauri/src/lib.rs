@@ -4,7 +4,7 @@ pub mod commands;
 
 use std::sync::Mutex;
 use infra::CpalRecorder;
-use commands::{RecorderState, list_audio_devices, start_audio_recording, stop_audio_recording, trim_audio, apply_voice_effects};
+use commands::{RecorderState, list_audio_devices, start_audio_recording, stop_audio_recording, list_recorded_files, trim_audio, apply_voice_effects};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +18,7 @@ pub fn run() {
             list_audio_devices,
             start_audio_recording,
             stop_audio_recording,
+            list_recorded_files,
             trim_audio,
             apply_voice_effects
         ])

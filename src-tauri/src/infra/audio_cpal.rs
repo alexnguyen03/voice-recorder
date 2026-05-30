@@ -58,7 +58,11 @@ impl AudioRecorder for CpalRecorder {
         Ok(device_infos)
     }
 
-    fn start_recording(&mut self, config: &RecordConfig) -> Result<(), AppError> {
+    fn start_recording(
+        &mut self,
+        config: &RecordConfig,
+        on_amplitude: Option<std::sync::Arc<dyn Fn(f32) + Send + Sync + 'static>>,
+    ) -> Result<(), AppError> {
         if self.is_recording {
             return Err(AppError {
                 code: ErrorCode::RecordingActive,
@@ -112,6 +116,10 @@ impl AudioRecorder for CpalRecorder {
             eprintln!("An error occurred on the cpal input stream: {}", err);
         };
 
+        let on_amp_f32 = on_amplitude.clone();
+        let on_amp_i16 = on_amplitude.clone();
+        let on_amp_u16 = on_amplitude.clone();
+
         // Construct input stream based on supported system format
         let stream = match sample_format {
             cpal::SampleFormat::F32 => {
@@ -120,6 +128,16 @@ impl AudioRecorder for CpalRecorder {
                     move |data: &[f32], _: &_| {
                         if let Ok(mut buf) = shared_buffer.lock() {
                             buf.extend_from_slice(data);
+                        }
+                        if let Some(ref cb) = on_amp_f32 {
+                            let mut max = 0.0f32;
+                            for &sample in data {
+                                let abs = sample.abs();
+                                if abs > max {
+                                    max = abs;
+                                }
+                            }
+                            cb(max);
                         }
                     },
                     err_callback,
@@ -130,9 +148,21 @@ impl AudioRecorder for CpalRecorder {
                 device.build_input_stream(
                     &supported_config.into(),
                     move |data: &[i16], _: &_| {
+                        let mut max = 0.0f32;
+                        let mut float_data = Vec::with_capacity(data.len());
+                        for &s in data {
+                            let f = s as f32 / i16::MAX as f32;
+                            let abs = f.abs();
+                            if abs > max {
+                                max = abs;
+                            }
+                            float_data.push(f);
+                        }
                         if let Ok(mut buf) = shared_buffer.lock() {
-                            let float_data = data.iter().map(|&s| s as f32 / i16::MAX as f32);
                             buf.extend(float_data);
+                        }
+                        if let Some(ref cb) = on_amp_i16 {
+                            cb(max);
                         }
                     },
                     err_callback,
@@ -143,11 +173,21 @@ impl AudioRecorder for CpalRecorder {
                 device.build_input_stream(
                     &supported_config.into(),
                     move |data: &[u16], _: &_| {
+                        let mut max = 0.0f32;
+                        let mut float_data = Vec::with_capacity(data.len());
+                        for &s in data {
+                            let f = (s as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0);
+                            let abs = f.abs();
+                            if abs > max {
+                                max = abs;
+                            }
+                            float_data.push(f);
+                        }
                         if let Ok(mut buf) = shared_buffer.lock() {
-                            let float_data = data.iter().map(|&s| {
-                                (s as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0)
-                            });
                             buf.extend(float_data);
+                        }
+                        if let Some(ref cb) = on_amp_u16 {
+                            cb(max);
                         }
                     },
                     err_callback,
