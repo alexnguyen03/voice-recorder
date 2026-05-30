@@ -271,3 +271,119 @@ impl AudioProcessor for DspEngine {
         Ok(output)
     }
 }
+
+pub struct LiveDspSession {
+    bass_filter: BiquadFilter,
+    treble_filter: BiquadFilter,
+    rumble_filter1: BiquadFilter,
+    rumble_filter2: BiquadFilter,
+    rumble_filter3: BiquadFilter,
+    hiss_filter: BiquadFilter,
+    notch50_filter: BiquadFilter,
+    notch60_filter: BiquadFilter,
+    linear_gain: f32,
+    noise_suppression: bool,
+    mic_eq_enhancement: bool,
+    envelope: f32,
+}
+
+impl LiveDspSession {
+    pub fn new() -> Self {
+        Self {
+            bass_filter: BiquadFilter::new_bypass(),
+            treble_filter: BiquadFilter::new_bypass(),
+            rumble_filter1: BiquadFilter::new_bypass(),
+            rumble_filter2: BiquadFilter::new_bypass(),
+            rumble_filter3: BiquadFilter::new_bypass(),
+            hiss_filter: BiquadFilter::new_bypass(),
+            notch50_filter: BiquadFilter::new_bypass(),
+            notch60_filter: BiquadFilter::new_bypass(),
+            linear_gain: 1.0,
+            noise_suppression: false,
+            mic_eq_enhancement: false,
+            envelope: 0.0,
+        }
+    }
+
+    pub fn update_filters(&mut self, sample_rate: f32, bass_boost: f32, treble_boost: f32, volume_boost: f32, mic_eq: bool, noise_sup: bool) {
+        let bass_gain = (bass_boost - 0.5) * 24.0;
+        let treble_gain = (treble_boost - 0.5) * 24.0;
+        self.linear_gain = if volume_boost >= 0.5 {
+            1.0 + (volume_boost - 0.5) * 6.0
+        } else {
+            0.25 + (volume_boost / 0.5) * 0.75
+        };
+
+        // Update coefficients while preserving internal state to avoid pops
+        let copy_coeffs = |target: &mut BiquadFilter, source: BiquadFilter| {
+            target.b0 = source.b0; target.b1 = source.b1; target.b2 = source.b2;
+            target.a1 = source.a1; target.a2 = source.a2;
+        };
+
+        copy_coeffs(&mut self.bass_filter, BiquadFilter::new_low_shelf(sample_rate, 200.0, bass_gain));
+        copy_coeffs(&mut self.treble_filter, BiquadFilter::new_high_shelf(sample_rate, 5000.0, treble_gain));
+
+        self.mic_eq_enhancement = mic_eq;
+        if mic_eq {
+            copy_coeffs(&mut self.rumble_filter1, BiquadFilter::new_high_pass(sample_rate, 85.0));
+            copy_coeffs(&mut self.rumble_filter2, BiquadFilter::new_high_pass(sample_rate, 85.0));
+            copy_coeffs(&mut self.rumble_filter3, BiquadFilter::new_high_pass(sample_rate, 85.0));
+            copy_coeffs(&mut self.hiss_filter, BiquadFilter::new_low_pass(sample_rate, 9000.0));
+            copy_coeffs(&mut self.notch50_filter, BiquadFilter::new_notch(sample_rate, 50.0, 10.0));
+            copy_coeffs(&mut self.notch60_filter, BiquadFilter::new_notch(sample_rate, 60.0, 10.0));
+        } else {
+            copy_coeffs(&mut self.rumble_filter1, BiquadFilter::new_bypass());
+            copy_coeffs(&mut self.rumble_filter2, BiquadFilter::new_bypass());
+            copy_coeffs(&mut self.rumble_filter3, BiquadFilter::new_bypass());
+            copy_coeffs(&mut self.hiss_filter, BiquadFilter::new_bypass());
+            copy_coeffs(&mut self.notch50_filter, BiquadFilter::new_bypass());
+            copy_coeffs(&mut self.notch60_filter, BiquadFilter::new_bypass());
+        }
+
+        self.noise_suppression = noise_sup;
+    }
+
+    pub fn process_chunk(&mut self, input: &[f32], output: &mut [f32]) {
+        let threshold = 0.015; 
+        let attack = 0.95; 
+
+        for (i, &sample) in input.iter().enumerate() {
+            if i >= output.len() { break; }
+            let mut processed = sample;
+            
+            if self.noise_suppression {
+                let abs_sample = processed.abs();
+                if abs_sample > self.envelope {
+                    self.envelope = abs_sample;
+                } else {
+                    self.envelope = attack * self.envelope + (1.0 - attack) * abs_sample;
+                }
+
+                let gain = if self.envelope < threshold {
+                    (self.envelope / threshold).powi(2)
+                } else {
+                    1.0
+                };
+                processed *= gain;
+            }
+
+            if self.mic_eq_enhancement {
+                processed = self.rumble_filter1.process(processed);
+                processed = self.rumble_filter2.process(processed);
+                processed = self.rumble_filter3.process(processed);
+                processed = self.hiss_filter.process(processed);
+                processed = self.notch50_filter.process(processed);
+                processed = self.notch60_filter.process(processed);
+            }
+            
+            processed = self.bass_filter.process(processed);
+            processed = self.treble_filter.process(processed);
+            processed *= self.linear_gain;
+            
+            if processed > 1.0 { processed = 1.0; }
+            if processed < -1.0 { processed = -1.0; }
+            
+            output[i] = processed;
+        }
+    }
+}

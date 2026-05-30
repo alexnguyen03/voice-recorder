@@ -6,13 +6,14 @@ import { RecordingPage } from "./pages/RecordingPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { VoiceDetailStudio } from "./pages/VoiceDetailStudio";
 import { SettingsPage } from "./pages/SettingsPage";
+import { LiveMicStudio } from "./pages/LiveMicStudio";
 import "./App.css";
 
 export type ThemeType = "light" | "dark" | "system";
 
 function App() {
-  // Tabs: 'recording' | 'files' | 'settings'
-  const [activeTab, setActiveTab] = useState<"recording" | "files" | "settings">("recording");
+  // Tabs: 'recording' | 'files' | 'settings' | 'live'
+  const [activeTab, setActiveTab] = useState<"recording" | "files" | "settings" | "live">("recording");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [filesList, setFilesList] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
@@ -235,6 +236,18 @@ function App() {
         </button>
         <button
           onClick={() => {
+            setActiveTab("live");
+          }}
+          className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
+            activeTab === "live"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          🎧 Live Mic
+        </button>
+        <button
+          onClick={() => {
             setActiveTab("settings");
           }}
           className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 ${
@@ -286,6 +299,8 @@ function App() {
             setTheme={setTheme}
           />
         )}
+
+        {activeTab === "live" && <LiveMicStudio />}
 
         {activeTab === "files" && (
           <div className="w-full">

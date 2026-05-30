@@ -3,8 +3,13 @@ pub mod infra;
 pub mod commands;
 
 use std::sync::Mutex;
-use infra::CpalRecorder;
-use commands::{RecorderState, list_audio_devices, start_audio_recording, stop_audio_recording, list_recorded_files, trim_audio, apply_voice_effects, cut_audio_segment, pause_audio_recording, resume_audio_recording, discard_audio_recording};
+use infra::{CpalRecorder, LiveMicState};
+use commands::{
+    RecorderState, list_audio_devices, start_audio_recording, stop_audio_recording, 
+    list_recorded_files, trim_audio, apply_voice_effects, cut_audio_segment, 
+    pause_audio_recording, resume_audio_recording, discard_audio_recording,
+    get_live_audio_devices, start_live_mic, stop_live_mic, update_live_filters
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -14,6 +19,7 @@ pub fn run() {
         .manage(RecorderState {
             recorder: Mutex::new(CpalRecorder::new()),
         })
+        .manage(Mutex::new(LiveMicState::new()))
         .invoke_handler(tauri::generate_handler![
             list_audio_devices,
             start_audio_recording,
@@ -24,7 +30,11 @@ pub fn run() {
             pause_audio_recording,
             resume_audio_recording,
             discard_audio_recording,
-            cut_audio_segment
+            cut_audio_segment,
+            get_live_audio_devices,
+            start_live_mic,
+            stop_live_mic,
+            update_live_filters
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
