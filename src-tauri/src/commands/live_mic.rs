@@ -1,6 +1,6 @@
 use tauri::State;
 use std::sync::Mutex;
-use crate::infra::live_audio::{LiveMicState, AudioDeviceInfo, get_audio_devices};
+use crate::infra::live_audio::{LiveMicState, get_audio_devices};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
@@ -39,7 +39,7 @@ pub fn start_live_mic(
     filters: LiveFilters,
     state: State<'_, Mutex<LiveMicState>>,
 ) -> Result<(), String> {
-    let mut mic_state = state.lock().map_err(|_| "Failed to lock state")?;
+    let mic_state = state.lock().map_err(|_| "Failed to lock state")?;
     
     // Stop any existing stream
     mic_state.stop();
@@ -61,7 +61,7 @@ pub fn start_live_mic(
 
 #[tauri::command]
 pub fn stop_live_mic(state: State<'_, Mutex<LiveMicState>>) -> Result<(), String> {
-    let mut mic_state = state.lock().map_err(|_| "Failed to lock state")?;
+    let mic_state = state.lock().map_err(|_| "Failed to lock state")?;
     mic_state.stop();
     Ok(())
 }

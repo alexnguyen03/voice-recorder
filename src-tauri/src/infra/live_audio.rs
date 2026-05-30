@@ -1,5 +1,5 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, Stream};
+use cpal::{SampleFormat, Stream, Sample};
 use std::sync::{mpsc, Arc, Mutex};
 use crate::infra::dsp_engine::LiveDspSession;
 
@@ -31,84 +31,117 @@ pub fn get_audio_devices() -> Vec<AudioDeviceInfo> {
     devices
 }
 
+pub enum LiveMicCommand {
+    Start { input: String, output: String },
+    Stop,
+    UpdateFilters { bass: f32, treble: f32, volume: f32, mic_eq: bool, noise_sup: bool },
+}
+
 pub struct LiveMicState {
-    pub input_stream: Option<Stream>,
-    pub output_stream: Option<Stream>,
-    pub dsp_session: Arc<Mutex<LiveDspSession>>,
+    cmd_tx: Mutex<mpsc::Sender<LiveMicCommand>>,
 }
 
 impl LiveMicState {
     pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel::<LiveMicCommand>();
+        
+        std::thread::spawn(move || {
+            let mut _input_stream: Option<Stream> = None;
+            let mut _output_stream: Option<Stream> = None;
+            let dsp_session = Arc::new(Mutex::new(LiveDspSession::new()));
+            
+            for cmd in rx.iter() {
+                match cmd {
+                    LiveMicCommand::Start { input, output } => {
+                        _input_stream = None;
+                        _output_stream = None;
+                        
+                        let host = cpal::default_host();
+                        
+                        let input_device = match host.input_devices() {
+                            Ok(mut devs) => devs.find(|x| x.name().unwrap_or_default() == input).ok_or("Input device not found".to_string()),
+                            Err(e) => Err(e.to_string()),
+                        };
+                            
+                        let output_device = match host.output_devices() {
+                            Ok(mut devs) => devs.find(|x| x.name().unwrap_or_default() == output).ok_or("Output device not found".to_string()),
+                            Err(e) => Err(e.to_string()),
+                        };
+                            
+                        if let (Ok(in_dev), Ok(out_dev)) = (input_device, output_device) {
+                            if let (Ok(in_cfg), Ok(out_cfg)) = (in_dev.default_input_config(), out_dev.default_output_config()) {
+                                let (audio_tx, audio_rx) = mpsc::sync_channel::<Vec<f32>>(100);
+                                
+                                let i_stream = match in_cfg.sample_format() {
+                                    SampleFormat::F32 => Self::build_input_stream::<f32>(&in_dev, &in_cfg.into(), audio_tx),
+                                    SampleFormat::I16 => Self::build_input_stream::<i16>(&in_dev, &in_cfg.into(), audio_tx),
+                                    SampleFormat::U16 => Self::build_input_stream::<u16>(&in_dev, &in_cfg.into(), audio_tx),
+                                    _ => Err("Unsupported input".into()),
+                                };
+
+                                let dsp = dsp_session.clone();
+                                let o_stream = match out_cfg.sample_format() {
+                                    SampleFormat::F32 => Self::build_output_stream::<f32>(&out_dev, &out_cfg.into(), audio_rx, dsp),
+                                    SampleFormat::I16 => Self::build_output_stream::<i16>(&out_dev, &out_cfg.into(), audio_rx, dsp),
+                                    SampleFormat::U16 => Self::build_output_stream::<u16>(&out_dev, &out_cfg.into(), audio_rx, dsp),
+                                    _ => Err("Unsupported output".into()),
+                                };
+
+                                if let (Ok(is), Ok(os)) = (i_stream, o_stream) {
+                                    let _ = is.play();
+                                    let _ = os.play();
+                                    _input_stream = Some(is);
+                                    _output_stream = Some(os);
+                                }
+                            }
+                        }
+                    }
+                    LiveMicCommand::Stop => {
+                        _input_stream = None;
+                        _output_stream = None;
+                    }
+                    LiveMicCommand::UpdateFilters { bass, treble, volume, mic_eq, noise_sup } => {
+                        if let Ok(mut session) = dsp_session.lock() {
+                            session.update_filters(44100.0, bass, treble, volume, mic_eq, noise_sup);
+                        }
+                    }
+                }
+            }
+        });
+
         Self {
-            input_stream: None,
-            output_stream: None,
-            dsp_session: Arc::new(Mutex::new(LiveDspSession::new())),
+            cmd_tx: Mutex::new(tx),
         }
     }
 
-    pub fn start(&mut self, input_name: &str, output_name: &str) -> Result<(), String> {
-        let host = cpal::default_host();
-        
-        let input_device = host.input_devices()
-            .map_err(|e| e.to_string())?
-            .find(|x| x.name().unwrap_or_default() == input_name)
-            .ok_or("Input device not found")?;
-            
-        let output_device = host.output_devices()
-            .map_err(|e| e.to_string())?
-            .find(|x| x.name().unwrap_or_default() == output_name)
-            .ok_or("Output device not found")?;
-            
-        let input_config = input_device.default_input_config().map_err(|e| e.to_string())?;
-        let output_config = output_device.default_output_config().map_err(|e| e.to_string())?;
-
-        let sample_rate = input_config.sample_rate().0 as f32;
-        
-        // MPSC for chunks
-        let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(100);
-        
-        // Build input stream
-        let input_stream = match input_config.sample_format() {
-            SampleFormat::F32 => Self::build_input_stream::<f32>(&input_device, &input_config.into(), tx)?,
-            SampleFormat::I16 => Self::build_input_stream::<i16>(&input_device, &input_config.into(), tx)?,
-            SampleFormat::U16 => Self::build_input_stream::<u16>(&input_device, &input_config.into(), tx)?,
-            _ => return Err("Unsupported input sample format".to_string()),
-        };
-
-        let dsp = self.dsp_session.clone();
-        
-        // Build output stream
-        let output_stream = match output_config.sample_format() {
-            SampleFormat::F32 => Self::build_output_stream::<f32>(&output_device, &output_config.into(), rx, dsp)?,
-            SampleFormat::I16 => Self::build_output_stream::<i16>(&output_device, &output_config.into(), rx, dsp)?,
-            SampleFormat::U16 => Self::build_output_stream::<u16>(&output_device, &output_config.into(), rx, dsp)?,
-            _ => return Err("Unsupported output sample format".to_string()),
-        };
-
-        input_stream.play().map_err(|e| e.to_string())?;
-        output_stream.play().map_err(|e| e.to_string())?;
-
-        self.input_stream = Some(input_stream);
-        self.output_stream = Some(output_stream);
+    pub fn start(&self, input_name: &str, output_name: &str) -> Result<(), String> {
+        if let Ok(tx) = self.cmd_tx.lock() {
+            let _ = tx.send(LiveMicCommand::Start { input: input_name.to_string(), output: output_name.to_string() });
+        }
         Ok(())
     }
 
-    pub fn stop(&mut self) {
-        self.input_stream = None;
-        self.output_stream = None;
-    }
-
-    pub fn update_filters(&self, sample_rate: f32, bass: f32, treble: f32, volume: f32, mic_eq: bool, noise_sup: bool) {
-        if let Ok(mut session) = self.dsp_session.lock() {
-            session.update_filters(sample_rate, bass, treble, volume, mic_eq, noise_sup);
+    pub fn stop(&self) {
+        if let Ok(tx) = self.cmd_tx.lock() {
+            let _ = tx.send(LiveMicCommand::Stop);
         }
     }
 
-    fn build_input_stream<T: cpal::Sample>(
+    pub fn update_filters(&self, _sample_rate: f32, bass: f32, treble: f32, volume: f32, mic_eq: bool, noise_sup: bool) {
+        if let Ok(tx) = self.cmd_tx.lock() {
+            let _ = tx.send(LiveMicCommand::UpdateFilters { bass, treble, volume, mic_eq, noise_sup });
+        }
+    }
+
+    fn build_input_stream<T>(
         device: &cpal::Device,
         config: &cpal::StreamConfig,
         tx: mpsc::SyncSender<Vec<f32>>,
-    ) -> Result<Stream, String> {
+    ) -> Result<Stream, String>
+    where
+        T: cpal::Sample + cpal::SizedSample,
+        f32: cpal::FromSample<T>
+    {
         let err_fn = |err| eprintln!("an error occurred on input stream: {}", err);
         let channels = config.channels as usize;
 
@@ -119,7 +152,7 @@ impl LiveMicState {
                 for frame in data.chunks(channels) {
                     let mut sum = 0.0;
                     for sample in frame {
-                        sum += sample.to_f32();
+                        sum += (*sample).to_sample::<f32>();
                     }
                     chunk.push(sum / channels as f32);
                 }
@@ -131,7 +164,7 @@ impl LiveMicState {
         Ok(stream)
     }
 
-    fn build_output_stream<T: cpal::Sample + cpal::FromSample<f32>>(
+    fn build_output_stream<T: cpal::Sample + cpal::FromSample<f32> + cpal::SizedSample>(
         device: &cpal::Device,
         config: &cpal::StreamConfig,
         rx: mpsc::Receiver<Vec<f32>>,
