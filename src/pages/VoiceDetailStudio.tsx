@@ -39,8 +39,16 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [treble, setTreble] = useState(0.5); // 0.5 = neutral
   const [volume, setVolume] = useState(0.5); // 0.5 = neutral (1x)
   const [showFilters, setShowFilters] = useState(false);
+  const [applyFilters, setApplyFilters] = useState(true);
 
   const filters: AudioFilters = { bassBoost: bass, trebleBoost: treble, volumeBoost: volume, micEqEnhancement, noiseSuppression };
+  const currentFilters = applyFilters ? filters : {
+    bassBoost: 0.5,
+    trebleBoost: 0.5,
+    volumeBoost: 0.5,
+    micEqEnhancement: false,
+    noiseSuppression: false
+  };
   const isFiltersActive = bass !== 0.5 || treble !== 0.5 || volume !== 0.5 || noiseSuppression || micEqEnhancement;
 
   const resetFilters = () => { setBass(0.5); setTreble(0.5); setVolume(0.5); setNoiseSuppression(false); setMicEqEnhancement(false); };
@@ -123,7 +131,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           onTrim={onTrim}
           editMode={actionMode}
           onPlayStateChange={setIsPlaying}
-          filters={filters}
+          filters={currentFilters}
           onTrimRangeChange={(start, end) => {
             setTrimStart(start);
             setTrimEnd(end);
@@ -258,15 +266,31 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`} />
           <Wand2 className="w-3.5 h-3.5" />
           Voice Filters
-          {isFiltersActive && (
+          {isFiltersActive && applyFilters && (
             <span className="ml-1 px-1.5 py-0.5 rounded-sm bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 text-[10px] font-bold tracking-wide">
               LIVE PREVIEW
+            </span>
+          )}
+          {isFiltersActive && !applyFilters && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-sm bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-wide">
+              BYPASSED
             </span>
           )}
         </button>
 
         <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[580px] opacity-100" : "max-h-0 opacity-0"}`}>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-sm p-4 flex flex-col gap-4">
+
+            {/* Master Toggle */}
+            <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-700/50">
+              <input type="checkbox" id="master-toggle" checked={applyFilters}
+                onChange={(e) => setApplyFilters(e.target.checked)}
+                className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
+              <label htmlFor="master-toggle" className="text-xs text-slate-900 dark:text-slate-100 cursor-pointer select-none font-bold">
+                Enable Filters (Live)
+              </label>
+              <span className="text-[10px] text-slate-400 ml-auto">Uncheck to hear original</span>
+            </div>
 
             {/* Non-destructive notice */}
             <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
