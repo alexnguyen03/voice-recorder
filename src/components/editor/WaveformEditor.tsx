@@ -71,10 +71,12 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const draggingHandleRef = useRef<'start' | 'end' | null>(null);
   const editModeRef = useRef<'trim' | 'cut' | null>(null);
 
-  // Web Audio API graph for non-destructive live preview
   const audioCtxRef   = useRef<AudioContext | null>(null);
   const gainNodeRef   = useRef<GainNode | null>(null);
   const rumbleNodeRef = useRef<BiquadFilterNode | null>(null);
+  const hissNodeRef   = useRef<BiquadFilterNode | null>(null);
+  const notch50NodeRef = useRef<BiquadFilterNode | null>(null);
+  const notch60NodeRef = useRef<BiquadFilterNode | null>(null);
   const bassNodeRef   = useRef<BiquadFilterNode | null>(null);
   const trebleNodeRef = useRef<BiquadFilterNode | null>(null);
   const compNodeRef   = useRef<DynamicsCompressorNode | null>(null);
@@ -105,6 +107,9 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       audioCtxRef.current = null;
       gainNodeRef.current = null;
       rumbleNodeRef.current = null;
+      hissNodeRef.current = null;
+      notch50NodeRef.current = null;
+      notch60NodeRef.current = null;
       bassNodeRef.current = null;
       trebleNodeRef.current = null;
       compNodeRef.current = null;
@@ -147,12 +152,11 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       gainNodeRef.current.gain.value = vol >= 0.5 ? 1.0 + (vol - 0.5) * 6.0 : 0.25 + (vol / 0.5) * 0.75;
     }
       
-    // Mic EQ Enhancement (Highpass at 85Hz)
-    if (rumbleNodeRef.current) {
-      // For BiquadFilter highpass, we can toggle it on/off by changing its frequency or type,
-      // but simpler is to just set frequency to 0 to "disable" it, or 85 to enable.
-      rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
-    }
+    // Mic EQ Enhancement (Highpass at 85Hz, Lowpass at 9000Hz, Notches at 50Hz/60Hz)
+    if (rumbleNodeRef.current) rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
+    if (hissNodeRef.current) hissNodeRef.current.frequency.value = filters.micEqEnhancement ? 9000 : 24000;
+    if (notch50NodeRef.current) notch50NodeRef.current.frequency.value = filters.micEqEnhancement ? 50 : 24000;
+    if (notch60NodeRef.current) notch60NodeRef.current.frequency.value = filters.micEqEnhancement ? 60 : 24000;
     
     // Bass: lowshelf at 200 Hz, 0.5 = 0 dB, range ±15 dB
     if (bassNodeRef.current)
@@ -572,6 +576,24 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         rumble.Q.value = 0.707;
         rumbleNodeRef.current = rumble;
 
+        const hiss = ctx.createBiquadFilter();
+        hiss.type = 'lowpass';
+        hiss.frequency.value = filters?.micEqEnhancement ? 9000 : 24000;
+        hiss.Q.value = 0.707;
+        hissNodeRef.current = hiss;
+
+        const notch50 = ctx.createBiquadFilter();
+        notch50.type = 'notch';
+        notch50.frequency.value = filters?.micEqEnhancement ? 50 : 24000;
+        notch50.Q.value = 10.0;
+        notch50NodeRef.current = notch50;
+
+        const notch60 = ctx.createBiquadFilter();
+        notch60.type = 'notch';
+        notch60.frequency.value = filters?.micEqEnhancement ? 60 : 24000;
+        notch60.Q.value = 10.0;
+        notch60NodeRef.current = notch60;
+
         const bass = ctx.createBiquadFilter();
         bass.type = 'lowshelf';
         bass.frequency.value = 200;
@@ -592,8 +614,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         comp.release.value   = 0.25;
         compNodeRef.current  = comp;
 
-        // source → rumble(highpass) → bass → treble → gain → gate/compressor → speakers
-        source.connect(rumble).connect(bass).connect(treble).connect(gain).connect(comp).connect(ctx.destination);
+        // source → rumble(highpass) → hiss(lowpass) → notch50 → notch60 → bass → treble → gain → gate/compressor → speakers
+        source.connect(rumble).connect(hiss).connect(notch50).connect(notch60).connect(bass).connect(treble).connect(gain).connect(comp).connect(ctx.destination);
       }
     }
 

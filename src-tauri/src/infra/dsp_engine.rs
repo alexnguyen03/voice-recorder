@@ -106,6 +106,53 @@ impl BiquadFilter {
         }
     }
 
+    /// Creates a low-pass biquad filter (for removing high-frequency hiss).
+    fn new_low_pass(sample_rate: f32, cutoff: f32) -> Self {
+        let w0 = 2.0 * PI * cutoff / sample_rate;
+        let q = 0.707; // Butterworth
+        let alpha = w0.sin() / (2.0 * q);
+
+        let b0 = (1.0 - w0.cos()) / 2.0;
+        let b1 = 1.0 - w0.cos();
+        let b2 = (1.0 - w0.cos()) / 2.0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * w0.cos();
+        let a2 = 1.0 - alpha;
+
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+            x1: 0.0, x2: 0.0,
+            y1: 0.0, y2: 0.0,
+        }
+    }
+
+    /// Creates a notch biquad filter (for removing 50Hz/60Hz AC hum).
+    fn new_notch(sample_rate: f32, freq: f32, q: f32) -> Self {
+        let w0 = 2.0 * PI * freq / sample_rate;
+        let alpha = w0.sin() / (2.0 * q);
+
+        let b0 = 1.0;
+        let b1 = -2.0 * w0.cos();
+        let b2 = 1.0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * w0.cos();
+        let a2 = 1.0 - alpha;
+
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+            x1: 0.0, x2: 0.0,
+            y1: 0.0, y2: 0.0,
+        }
+    }
+
     /// Evaluates biquad equations to process a single sample frame.
     fn process(&mut self, sample: f32) -> f32 {
         let out = self.b0 * sample + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2;
@@ -179,18 +226,28 @@ impl AudioProcessor for DspEngine {
         let mut bass_filter = BiquadFilter::new_low_shelf(sample_rate, 200.0, bass_gain);
         let mut treble_filter = BiquadFilter::new_high_shelf(sample_rate, 5000.0, treble_gain);
         
-        // High-pass filter at 85Hz to cut off low-quality mic rumble and wind noise
-        let mut rumble_filter = if mic_eq_enhancement {
-            BiquadFilter::new_high_pass(sample_rate, 85.0)
-        } else {
-            BiquadFilter::new_bypass()
-        };
+        // Anti-hum / Anti-hiss filters for low-quality mics
+        let mut rumble_filter = BiquadFilter::new_bypass();
+        let mut hiss_filter = BiquadFilter::new_bypass();
+        let mut notch50_filter = BiquadFilter::new_bypass();
+        let mut notch60_filter = BiquadFilter::new_bypass();
+
+        if mic_eq_enhancement {
+            rumble_filter = BiquadFilter::new_high_pass(sample_rate, 85.0); // Cut sub-rumble
+            hiss_filter = BiquadFilter::new_low_pass(sample_rate, 9000.0);  // Cut high-freq static
+            notch50_filter = BiquadFilter::new_notch(sample_rate, 50.0, 10.0); // Kill 50Hz mains hum
+            notch60_filter = BiquadFilter::new_notch(sample_rate, 60.0, 10.0); // Kill 60Hz mains hum
+        }
 
         let mut output = Vec::with_capacity(input.len());
         for &sample in input {
             let mut processed = sample;
-            // Clean rumble first
+            // Clean noise (hum and hiss) first
             processed = rumble_filter.process(processed);
+            processed = hiss_filter.process(processed);
+            processed = notch50_filter.process(processed);
+            processed = notch60_filter.process(processed);
+            
             // Warm the voice frequencies
             processed = bass_filter.process(processed);
             // Boost crisp vocal clarity
