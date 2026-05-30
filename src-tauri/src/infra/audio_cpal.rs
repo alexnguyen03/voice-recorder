@@ -12,6 +12,11 @@ pub struct CpalRecorder {
     active_config: Option<RecordConfig>,
 }
 
+// cpal::Stream is !Send on some platforms (e.g. Windows COM interfaces)
+// but it is safe to transfer and drop it inside a Mutex protected Tauri State.
+unsafe impl Send for CpalRecorder {}
+unsafe impl Sync for CpalRecorder {}
+
 impl CpalRecorder {
     pub fn new() -> Self {
         Self {
