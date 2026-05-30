@@ -7,61 +7,72 @@ interface AudioVisualizerProps {
   backgroundColor?: string;
 }
 
+interface AmplitudeSample {
+  time: number; // elapsed time in seconds when this amplitude was received
+  val: number;  // amplitude value (0.0 - 1.0)
+}
+
 /**
- * High-performance Voice-Synced Symmetrical Bar Audio Visualizer.
- * Leverages HTML5 Canvas for real-time 60FPS fluid liquid movements.
+ * High-performance Live Waveform Visualizer for Recording.
+ * Displays a rolling 10-second viewport. The recording head is locked in the center (50% width)
+ * from the start of the recording while the waveform and timeline scroll continuously at a
+ * buttery-smooth 60FPS. All timestamps are drawn directly on the canvas.
  */
 export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   isRecording,
-  color = "#ef4444",
-  backgroundColor = "#0f172a",
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Symmetrical Bar Count
-  const numBars = 60;
-
-  // Rolling target amplitudes and current animated heights
-  const amplitudesRef = useRef<number[]>(Array(numBars).fill(0.05));
-  const currentHeightsRef = useRef<number[]>(Array(numBars).fill(0.05));
-
+  const numBars = 180;
+  const amplitudesRef = useRef<AmplitudeSample[]>([]);
+  const startTimeRef = useRef<number>(0);
+  const lastMockTimeRef = useRef<number>(0);
+  
   const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
 
+  // Helper: Format seconds to MM:SS
+  const formatTime = (secs: number): string => {
+    const s = Math.max(0, secs);
+    const minutes = Math.floor(s / 60);
+    const seconds = Math.floor(s % 60);
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  // 1. Initialize Start Time and Event Listener
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
     let active = true;
 
-    // Listen to real-time voice amplitude events from Rust backend
-    const setupListener = async () => {
-      try {
-        const unlisten = await listen<number>("audio-amplitude", (event) => {
-          if (!active) return;
-          const amp = event.payload;
-          
-          // Boost the signal slightly to make visual movements more pronounced
-          const boosted = Math.min(1.0, amp * 1.6);
-          
-          amplitudesRef.current.shift();
-          amplitudesRef.current.push(Math.max(0.04, boosted));
-        });
-        unlistenFn = unlisten;
-      } catch (err) {
-        console.error("Failed to subscribe to voice amplitude event:", err);
-      }
-    };
-
     if (isRecording) {
-      // Clear rolling buffers
-      amplitudesRef.current.fill(0.04);
-      currentHeightsRef.current.fill(0.04);
+      startTimeRef.current = performance.now();
+      lastMockTimeRef.current = performance.now();
+      amplitudesRef.current = [];
+
+      const setupListener = async () => {
+        try {
+          const unlisten = await listen<number>("audio-amplitude", (event) => {
+            if (!active) return;
+            const amp = event.payload;
+            
+            // Boost the signal slightly to match standard playback waveform amplitudes
+            const boosted = Math.min(0.95, amp * 1.6);
+            const timeOffset = (performance.now() - startTimeRef.current) / 1000;
+            
+            amplitudesRef.current.push({
+              time: timeOffset,
+              val: Math.max(0.03, boosted),
+            });
+          });
+          unlistenFn = unlisten;
+        } catch (err) {
+          console.error("Failed to subscribe to voice amplitude event:", err);
+        }
+      };
 
       if (isTauri) {
         setupListener();
       }
-    } else {
-      // Slowly decay existing bars to flat baseline when recording stops
-      amplitudesRef.current.fill(0.02);
     }
 
     return () => {
@@ -72,104 +83,187 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     };
   }, [isRecording, isTauri]);
 
+  // 2. High-Performance 60FPS Draw Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let width = canvas.width;
-    let height = canvas.height;
-
-    // Symmetrical bars setup
-    const barWidth = 4;
-    const spacing = 3;
-    const totalWidth = numBars * (barWidth + spacing) - spacing;
-    const startX = (width - totalWidth) / 2;
 
     let mockSpeechTimer = 0;
     let currentSpeechAmp = 0.04;
 
     const draw = () => {
-      // Clear canvas
-      ctx.fillStyle = backgroundColor;
-      ctx.fillRect(0, 0, width, height);
+      if (!isRecording) return;
 
-      // Create a gorgeous gradient for the bars
-      const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, "#f43f5e"); // Rose tint at top
-      gradient.addColorStop(0.5, color);   // Central theme color
-      gradient.addColorStop(1, "#f43f5e"); // Rose tint at bottom
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
 
-      ctx.fillStyle = gradient;
+      // Adjust backing store size dynamically for Retina support
+      const targetWidth = Math.floor(rect.width * dpr);
+      const targetHeight = Math.floor(rect.height * dpr);
+      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+      }
 
-      // Mock audio amplitude generator for browser dev preview fallback
-      if (!isTauri && isRecording) {
-        mockSpeechTimer += 1;
-        // Generate continuous speech block shapes followed by small pauses
-        if (mockSpeechTimer % 80 < 60) {
-          const sineMod = Math.abs(Math.sin(mockSpeechTimer * 0.12));
-          currentSpeechAmp = 0.04 + sineMod * (0.2 + Math.random() * 0.7);
-        } else {
-          currentSpeechAmp = currentSpeechAmp * 0.8 + 0.02 * 0.2; // decay to breath
-        }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-        // Push new mock value periodically to simulate scroll
-        if (mockSpeechTimer % 3 === 0) {
-          amplitudesRef.current.shift();
-          amplitudesRef.current.push(Math.max(0.04, currentSpeechAmp));
+      // Reset and scale context for crisp High-DPI graphics
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const cssWidth = rect.width;
+      const cssHeight = rect.height;
+
+      // Clear Canvas
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+      // Draw background gradient matching mockup
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, cssHeight);
+      bgGradient.addColorStop(0, "#f9fafb");
+      bgGradient.addColorStop(0.2, "#ffffff");
+      bgGradient.addColorStop(0.8, "#ffffff");
+      bgGradient.addColorStop(1, "#f3f4f6");
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+      // Browser mock preview generator (runs at ~30Hz inside the frame draw loop)
+      if (!isTauri) {
+        const now = performance.now();
+        if (now - lastMockTimeRef.current >= 33) {
+          lastMockTimeRef.current = now;
+          mockSpeechTimer += 1;
+          if (mockSpeechTimer % 85 < 65) {
+            const sineMod = Math.abs(Math.sin(mockSpeechTimer * 0.12));
+            currentSpeechAmp = 0.04 + sineMod * (0.2 + Math.random() * 0.75);
+          } else {
+            currentSpeechAmp = currentSpeechAmp * 0.8 + 0.02 * 0.2;
+          }
+          const boosted = Math.min(0.95, currentSpeechAmp * 1.6);
+          const timeOffset = (now - startTimeRef.current) / 1000;
+          amplitudesRef.current.push({
+            time: timeOffset,
+            val: Math.max(0.03, boosted),
+          });
         }
       }
 
-      // Draw all bars
-      for (let i = 0; i < numBars; i++) {
-        const target = amplitudesRef.current[i];
-        const current = currentHeightsRef.current[i];
-        
-        // Fluid Linear Interpolation (Lerp) to remove step-jumps
-        const next = current + (target - current) * 0.18;
-        currentHeightsRef.current[i] = next;
+      // Calculate elapsed time and rolling viewport boundaries
+      const elapsedSec = (performance.now() - startTimeRef.current) / 1000;
+      
+      // Viewport width is fixed at 10 seconds. Playhead is always locked at 50% width (middle).
+      const viewStart = elapsedSec - 5;
+      const viewEnd = elapsedSec + 5;
+      const progressFraction = 0.5;
 
-        // Calculate heights centered around the middle axis
-        const barHeight = next * (height * 0.85);
+      // Coordinate metrics for drawing
+      const barWidth = 2;
+      const spacing = 1;
+      const totalBarsWidth = numBars * (barWidth + spacing) - spacing;
+      const startX = (cssWidth - totalBarsWidth) / 2;
+
+      // Draw Grid Lines (5 divisions) and text timestamps
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1;
+      ctx.fillStyle = "#9ca3af";
+      ctx.font = "10px Inter, system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "center";
+
+      for (let g = 0; g <= 4; g++) {
+        const gx = startX + (g / 4) * totalBarsWidth;
+        // Grid lines stop at y = 120 to leave space for labels
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, 120);
+        ctx.stroke();
+
+        // Draw dynamic timeline timestamp label
+        const labelTime = viewStart + (g / 4) * (viewEnd - viewStart);
+        ctx.fillText(formatTime(labelTime), gx, 138);
+      }
+
+      // Calculate the progress bar index
+      const recordedBarsCount = Math.floor(progressFraction * numBars);
+      const samples = amplitudesRef.current;
+
+      // Draw Symmetrical Waveform Bars (Height centered in y = 60 range)
+      const centerY = 60;
+      const maxBarHeight = 80; // maximum vertical bar span
+
+      for (let i = 0; i < numBars; i++) {
+        const barTimeStart = viewStart + (i / numBars) * (viewEnd - viewStart);
+        const barTimeEnd = viewStart + ((i + 1) / numBars) * (viewEnd - viewStart);
+        
+        let amp = 0.04;
+
+        if (i > recordedBarsCount) {
+          // Unrecorded future region: flat grey bar
+          amp = 0.04;
+        } else if (i === recordedBarsCount) {
+          // Active dancing bar under the record head: use latest amplitude sample
+          amp = samples.length > 0 ? samples[samples.length - 1].val : 0.04;
+        } else {
+          // Historical recorded region: average/max amplitude in this specific time bracket
+          const samplesInBracket = samples.filter(
+            (s) => s.time >= barTimeStart && s.time < barTimeEnd
+          );
+          
+          if (samplesInBracket.length > 0) {
+            amp = Math.max(...samplesInBracket.map((s) => s.val));
+          } else {
+            // Find closest historical sample if spacing is sparse
+            let closestVal = 0.03;
+            let minDiff = Infinity;
+            for (let j = 0; j < samples.length; j++) {
+              const diff = Math.abs(samples[j].time - barTimeStart);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closestVal = samples[j].val;
+              }
+            }
+            amp = closestVal;
+          }
+        }
+
+        const barHeight = amp * maxBarHeight;
         const x = startX + i * (barWidth + spacing);
-        const y = (height - barHeight) / 2;
+        const y = centerY - barHeight / 2;
+
+        const isRecorded = i <= recordedBarsCount && barTimeEnd > 0;
+        ctx.fillStyle = isRecorded ? "#54b4ff" : "#e5e7eb"; // blue for recorded, grey for future
 
         ctx.beginPath();
         if (ctx.roundRect) {
-          ctx.roundRect(x, y, barWidth, barHeight, 2);
+          ctx.roundRect(x, y, barWidth, barHeight, 1);
         } else {
           ctx.rect(x, y, barWidth, barHeight);
         }
         ctx.fill();
       }
 
-      // Keep running the loop if recording or if there are still moving bars (decaying to flat)
-      const hasMotion = currentHeightsRef.current.some(h => h > 0.03);
-      if (isRecording || hasMotion) {
-        animationRef.current = requestAnimationFrame(draw);
-      } else {
-        // Render resting baseline when completely flat
-        ctx.fillStyle = backgroundColor;
-        ctx.fillRect(0, 0, width, height);
+      // Draw vertical Blue Recording Head at progress
+      const headX = startX + progressFraction * totalBarsWidth;
 
-        ctx.fillStyle = "#475569"; // subtle gray for idle state
-        for (let i = 0; i < numBars; i++) {
-          const x = startX + i * (barWidth + spacing);
-          const y = (height - 4) / 2;
-          ctx.beginPath();
-          if (ctx.roundRect) {
-            ctx.roundRect(x, y, barWidth, 4, 1);
-          } else {
-            ctx.rect(x, y, barWidth, 4);
-          }
-          ctx.fill();
-        }
-      }
+      ctx.strokeStyle = "#54b4ff";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(headX, 0);
+      ctx.lineTo(headX, 120);
+      ctx.stroke();
+
+      // Top cap circle
+      ctx.fillStyle = "#54b4ff";
+      ctx.beginPath();
+      ctx.arc(headX, 3, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bottom cap circle
+      ctx.beginPath();
+      ctx.arc(headX, 117, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      animationRef.current = requestAnimationFrame(draw);
     };
 
-    // Always start/keep draw loop active
     draw();
 
     return () => {
@@ -177,16 +271,16 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isRecording, color, backgroundColor, isTauri]);
+  }, [isRecording]);
 
   return (
-    <div className="w-full h-[150px] rounded-2xl overflow-hidden border border-slate-700/80 shadow-2xl bg-slate-900 flex items-center justify-center p-4">
-      <canvas
-        ref={canvasRef}
-        width={550}
-        height={120}
-        className="w-full h-full block"
-      />
+    <div className="w-full flex flex-col items-center">
+      <div className="w-full relative bg-white border border-gray-200/80 rounded-2xl p-6 pt-8 pb-3 shadow-sm select-none">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-[150px] block"
+        />
+      </div>
     </div>
   );
 };
