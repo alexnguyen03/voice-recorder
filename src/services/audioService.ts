@@ -42,6 +42,15 @@ export interface VoiceEffectOptions {
   smooth_voice_cutoff: boolean;
 }
 
+/** Result of vocal source separation. */
+export interface SeparationResult {
+  vocals_path:        string | null;
+  accompaniment_path: string | null;
+  processing_time_ms: number;
+}
+
+export type SeparationOutputMode = "vocals_only" | "accompaniment_only" | "both";
+
 /** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams. */
 export interface FilterParams {
   bass_boost: number;
@@ -187,5 +196,31 @@ export const AudioService = {
     if (!isTauri()) return;
     try { await invoke("clear_preview", { filePath }); }
     catch (e) { /* safe to swallow */ }
+  },
+
+  /**
+   * Separate vocals from accompaniment using MDX-Net (ONNX Runtime).
+   * Downloads ~45 MB model on first use — listen to `separation:download_progress` event.
+   * Processing emits `separation:progress` events with `{percent: 0..100}`.
+   */
+  async separateVocals(
+    filePath: string,
+    outputMode: SeparationOutputMode = "vocals_only",
+  ): Promise<SeparationResult> {
+    if (!isTauri()) {
+      return {
+        vocals_path:        filePath.replace(".wav", "_vocals.wav"),
+        accompaniment_path: null,
+        processing_time_ms: 0,
+      };
+    }
+    try {
+      return await invoke<SeparationResult>("separate_vocals", {
+        filePath,
+        outputMode,
+      });
+    } catch (e) {
+      throw new Error(String(e));
+    }
   },
 };

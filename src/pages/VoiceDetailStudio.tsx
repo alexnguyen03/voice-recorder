@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, Scissors, X } from "lucide-react";
 import { WaveformEditor, WaveformEditorHandle } from "../components/editor/WaveformEditor";
 import { VoiceFiltersPanel } from "../components/editor/VoiceFiltersPanel";
+import { VocalSeparationPanel } from "../components/editor/VocalSeparationPanel";
 import { useVoiceFilters } from "../hooks/useVoiceFilters";
 import { VoiceEffectOptions } from "../services/audioService";
 
@@ -133,6 +134,8 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         resetFilters={resetFilters}
         exportWithFilters={exportWithFilters}
       />
+
+      <VocalSeparationPanel selectedFile={selectedFile} />
     </div>
   );
 };
