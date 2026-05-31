@@ -83,7 +83,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const notch60NodeRef = useRef<BiquadFilterNode | null>(null);
   const bassNodeRef   = useRef<BiquadFilterNode | null>(null);
   const trebleNodeRef = useRef<BiquadFilterNode | null>(null);
-  const compNodeRef   = useRef<DynamicsCompressorNode | null>(null);
+  const noiseGateNodeRef = useRef<AudioWorkletNode | null>(null);
 
   // High-density bar count (180 points for a premium professional look)
   const numBars = 180;
@@ -119,7 +119,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       notch60NodeRef.current = null;
       bassNodeRef.current = null;
       trebleNodeRef.current = null;
-      compNodeRef.current = null;
+      noiseGateNodeRef.current = null;
     };
   }, [audioUrl]);
 
@@ -173,10 +173,12 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     // Treble: highshelf at 4 kHz
     if (trebleNodeRef.current)
       trebleNodeRef.current.gain.value = (filters.trebleBoost - 0.5) * 30;
-    // Noise gate: use DynamicsCompressor as a simple soft gate
-    if (compNodeRef.current) {
-      compNodeRef.current.threshold.value = filters.noiseSuppression ? -45 : -100;
-      compNodeRef.current.ratio.value     = filters.noiseSuppression ? 16   : 1;
+    // Noise gate: send toggle + sensitivity message to AudioWorklet processor
+    if (noiseGateNodeRef.current) {
+      noiseGateNodeRef.current.port.postMessage({
+        enabled: filters.noiseSuppression,
+        sensitivity: 0.65, // VoiceDetailStudio doesn't expose sensitivity yet; use safe default
+      });
     }
   }, [filters]);
 
@@ -624,6 +626,21 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   };
 
   // Playback Control Actions
+
+  /** Toggle play/pause on the audio element */
+  const startAudioPlayback = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      onPlayStateChange?.(false);
+    } else {
+      audioRef.current.play().catch((err) => console.error('Playback error:', err));
+      setIsPlaying(true);
+      onPlayStateChange?.(true);
+    }
+  };
+
   const togglePlay = () => {
     if (!audioRef.current) return;
 
@@ -689,21 +706,39 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         treble.gain.value = filters ? (filters.trebleBoost - 0.5) * 30 : 0;
         trebleNodeRef.current = treble;
 
-        const comp = ctx.createDynamicsCompressor();
-        comp.threshold.value = filters?.noiseSuppression ? -45  : -100;
-        comp.ratio.value     = filters?.noiseSuppression ? 16   : 1;
-        comp.knee.value      = 10;
-        comp.attack.value    = 0.003;
-        comp.release.value   = 0.25;
-        compNodeRef.current  = comp;
-
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
         analyser.smoothingTimeConstant = 0.85;
         analyserNodeRef.current = analyser;
 
-        // source → rumble1 → rumble2 → rumble3(highpass) → hiss(lowpass) → notch50 → notch60 → bass → treble → gain → gate/compressor → analyser → speakers
-        source.connect(rumble).connect(rumble2).connect(rumble3).connect(hiss).connect(notch50).connect(notch60).connect(bass).connect(treble).connect(gain).connect(comp).connect(analyser).connect(ctx.destination);
+        // Build the EQ chain (noise gate node inserted after worklet loads)
+        const eqChain = source
+          .connect(rumble).connect(rumble2).connect(rumble3).connect(hiss)
+          .connect(notch50).connect(notch60)
+          .connect(bass).connect(treble)
+          .connect(gain);
+
+        // Load AudioWorklet noise gate async — start playback only after graph is fully wired
+        ctx.audioWorklet.addModule('/noise-gate-processor.js').then(() => {
+          const noiseGate = new AudioWorkletNode(ctx, 'noise-gate-processor');
+          // Send initial enabled state and sensitivity together
+          noiseGate.port.postMessage({
+            enabled: filters?.noiseSuppression ?? false,
+            sensitivity: 0.65, // default; will be overridden when filters prop updates
+          });
+          noiseGateNodeRef.current = noiseGate;
+          // EQ chain → noiseGate → analyser → speakers
+          eqChain.connect(noiseGate).connect(analyser).connect(ctx.destination);
+          startAudioPlayback();
+        }).catch((err) => {
+          // Worklet unavailable — connect without gate and play anyway
+          console.warn('NoiseGate AudioWorklet failed, bypassing:', err);
+          eqChain.connect(analyser).connect(ctx.destination);
+          startAudioPlayback();
+        });
+
+        // Return early — startAudioPlayback() called inside promise callbacks above
+        return;
       }
     }
 
@@ -712,16 +747,9 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       audioCtxRef.current.resume();
     }
 
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-      onPlayStateChange?.(false);
-    } else {
-      audioRef.current.play().catch((err) => console.error('Playback error:', err));
-      setIsPlaying(true);
-      onPlayStateChange?.(true);
-    }
+    startAudioPlayback();
   };
+
 
   const skipBackward = () => {
     if (!audioRef.current) return;

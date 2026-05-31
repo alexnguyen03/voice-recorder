@@ -21,6 +21,7 @@ export const LiveMicStudio: React.FC = () => {
   const [bass, setBass] = useState(0.5);
   const [treble, setTreble] = useState(0.5);
   const [volume, setVolume] = useState(0.5);
+  const [gateSensitivity, setGateSensitivity] = useState(0.65); // 0=insensitive, 1=very sensitive
 
   useEffect(() => {
     fetchDevices();
@@ -35,10 +36,11 @@ export const LiveMicStudio: React.FC = () => {
           treble_boost: treble,
           volume_boost: volume,
           mic_eq_enhancement: micEqEnhancement,
+          gate_sensitivity: gateSensitivity,
         }
       }).catch(console.error);
     }
-  }, [noiseSuppression, micEqEnhancement, bass, treble, volume, isLive]);
+  }, [noiseSuppression, micEqEnhancement, bass, treble, volume, gateSensitivity, isLive]);
 
   const fetchDevices = async () => {
     try {
@@ -70,6 +72,7 @@ export const LiveMicStudio: React.FC = () => {
             treble_boost: treble,
             volume_boost: volume,
             mic_eq_enhancement: micEqEnhancement,
+            gate_sensitivity: gateSensitivity,
           }
         });
         setIsLive(true);
@@ -181,6 +184,28 @@ export const LiveMicStudio: React.FC = () => {
                 </div>
               </label>
             </div>
+
+            {/* Gate Sensitivity slider — only visible when noise gate is on */}
+            {noiseSuppression && (
+              <div className="px-1 pb-1">
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Gate Sensitivity</label>
+                  <span className="text-[10px] font-bold text-violet-500">
+                    {gateSensitivity < 0.33 ? '🔇 Low (loud voice only)' : gateSensitivity < 0.66 ? '🎙️ Medium' : '🔊 High (quiet voice OK)'}
+                  </span>
+                </div>
+                <input
+                  type="range" min="0" max="1" step="0.05"
+                  value={gateSensitivity}
+                  onChange={e => setGateSensitivity(Number(e.target.value))}
+                  className="w-full accent-violet-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none"
+                />
+                <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+                  <span>Less sensitive</span>
+                  <span>More sensitive</span>
+                </div>
+              </div>
+            )}
 
             {/* EQ Sliders */}
             <div className="space-y-4 pt-2">

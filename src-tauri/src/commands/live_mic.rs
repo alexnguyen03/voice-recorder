@@ -22,7 +22,12 @@ pub struct LiveFilters {
     pub treble_boost: f32,
     pub volume_boost: f32,
     pub mic_eq_enhancement: bool,
+    /// 0.0 = least sensitive (hard to trigger), 1.0 = most sensitive (triggers easily)
+    #[serde(default = "default_gate_sensitivity")]
+    pub gate_sensitivity: f32,
 }
+
+fn default_gate_sensitivity() -> f32 { 0.5 }
 
 #[tauri::command]
 pub fn get_live_audio_devices() -> Result<DeviceList, String> {
@@ -46,12 +51,13 @@ pub fn start_live_mic(
     
     // Set initial filters
     mic_state.update_filters(
-        44100.0, // Default for setup
+        44100.0,
         filters.bass_boost,
         filters.treble_boost,
         filters.volume_boost,
         filters.mic_eq_enhancement,
         filters.enable_noise_suppression,
+        filters.gate_sensitivity,
     );
     
     // Start streaming
@@ -80,6 +86,7 @@ pub fn update_live_filters(
         filters.volume_boost,
         filters.mic_eq_enhancement,
         filters.enable_noise_suppression,
+        filters.gate_sensitivity,
     );
     Ok(())
 }

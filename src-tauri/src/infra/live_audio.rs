@@ -34,7 +34,7 @@ pub fn get_audio_devices() -> Vec<AudioDeviceInfo> {
 pub enum LiveMicCommand {
     Start { input: String, output: String },
     Stop,
-    UpdateFilters { bass: f32, treble: f32, volume: f32, mic_eq: bool, noise_sup: bool },
+    UpdateFilters { bass: f32, treble: f32, volume: f32, mic_eq: bool, noise_sup: bool, gate_sensitivity: f32 },
 }
 
 pub struct LiveMicState {
@@ -100,9 +100,9 @@ impl LiveMicState {
                         _input_stream = None;
                         _output_stream = None;
                     }
-                    LiveMicCommand::UpdateFilters { bass, treble, volume, mic_eq, noise_sup } => {
+                    LiveMicCommand::UpdateFilters { bass, treble, volume, mic_eq, noise_sup, gate_sensitivity } => {
                         if let Ok(mut session) = dsp_session.lock() {
-                            session.update_filters(44100.0, bass, treble, volume, mic_eq, noise_sup);
+                            session.update_filters(44100.0, bass, treble, volume, mic_eq, noise_sup, gate_sensitivity);
                         }
                     }
                 }
@@ -127,9 +127,9 @@ impl LiveMicState {
         }
     }
 
-    pub fn update_filters(&self, _sample_rate: f32, bass: f32, treble: f32, volume: f32, mic_eq: bool, noise_sup: bool) {
+    pub fn update_filters(&self, _sample_rate: f32, bass: f32, treble: f32, volume: f32, mic_eq: bool, noise_sup: bool, gate_sensitivity: f32) {
         if let Ok(tx) = self.cmd_tx.lock() {
-            let _ = tx.send(LiveMicCommand::UpdateFilters { bass, treble, volume, mic_eq, noise_sup });
+            let _ = tx.send(LiveMicCommand::UpdateFilters { bass, treble, volume, mic_eq, noise_sup, gate_sensitivity });
         }
     }
 

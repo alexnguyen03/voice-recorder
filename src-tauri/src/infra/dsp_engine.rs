@@ -175,25 +175,61 @@ impl DspEngine {
 
 impl AudioProcessor for DspEngine {
     fn suppress_noise(&self, input: &[f32]) -> Result<Vec<f32>, AppError> {
-        // Soft Noise Gate: Mutes low-level room static background hiss dynamically
-        let threshold = 0.015; 
-        let attack = 0.95; // Envelope tracking factor
-        let mut envelope = 0.0f32;
+        // Improved Noise Gate with:
+        //   - Separate fast attack / slow release envelope
+        //   - Hysteresis: open_threshold > close_threshold (prevents pumping)
+        //   - Smooth linear knee instead of abrupt quadratic
+        //   - Hold counter to avoid choppy cuts between syllables
+        let sample_rate = 44100.0f32;
+        let open_threshold  = 0.025_f32;  // RMS level to open gate
+        let close_threshold = 0.010_f32;  // RMS level to close gate (hysteresis)
+        let knee_width      = 0.015_f32;  // Smooth transition band above close_threshold
+
+        // Time constants: attack ~2ms, release ~150ms
+        let attack_coef  = (-1.0_f32 / (0.002 * sample_rate)).exp();
+        let release_coef = (-1.0_f32 / (0.150 * sample_rate)).exp();
+
+        // Hold: keep gate open for ~80ms after signal drops below threshold
+        let hold_samples = (0.080 * sample_rate) as i32;
+
+        let mut envelope  = 0.0_f32;
+        let mut gate_open = false;
+        let mut hold_counter: i32 = 0;
 
         let output = input.iter().map(|&sample| {
             let abs_sample = sample.abs();
-            // Envelope tracker logic
+
+            // Envelope follower: fast attack, slow release
             if abs_sample > envelope {
-                envelope = abs_sample;
+                envelope = attack_coef * envelope + (1.0 - attack_coef) * abs_sample;
             } else {
-                envelope = attack * envelope + (1.0 - attack) * abs_sample;
+                envelope = release_coef * envelope + (1.0 - release_coef) * abs_sample;
             }
 
-            // Calculate soft-threshold gain factor
-            let gain = if envelope < threshold {
-                (envelope / threshold).powi(2)
-            } else {
+            // Hysteresis state machine
+            if gate_open {
+                if envelope < close_threshold {
+                    if hold_counter > 0 {
+                        hold_counter -= 1;
+                    } else {
+                        gate_open = false;
+                    }
+                } else {
+                    hold_counter = hold_samples;
+                }
+            } else if envelope >= open_threshold {
+                gate_open = true;
+                hold_counter = hold_samples;
+            }
+
+            // Smooth knee: full gain when open, soft fade in transition zone, silent below
+            let gain = if gate_open {
                 1.0
+            } else if envelope > close_threshold {
+                // Linear knee between close_threshold and open_threshold
+                ((envelope - close_threshold) / knee_width).min(1.0)
+            } else {
+                0.0
             };
 
             sample * gain
@@ -284,7 +320,14 @@ pub struct LiveDspSession {
     linear_gain: f32,
     noise_suppression: bool,
     mic_eq_enhancement: bool,
+    // Noise gate state
     envelope: f32,
+    gate_open: bool,
+    hold_counter: i32,
+    sample_rate: f32,
+    /// Derived thresholds from gate_sensitivity (0.0–1.0)
+    open_threshold: f32,
+    close_threshold: f32,
 }
 
 impl LiveDspSession {
@@ -302,10 +345,15 @@ impl LiveDspSession {
             noise_suppression: false,
             mic_eq_enhancement: false,
             envelope: 0.0,
+            gate_open: false,
+            hold_counter: 0,
+            sample_rate: 44100.0,
+            open_threshold: 0.012,
+            close_threshold: 0.005,
         }
     }
 
-    pub fn update_filters(&mut self, sample_rate: f32, bass_boost: f32, treble_boost: f32, volume_boost: f32, mic_eq: bool, noise_sup: bool) {
+    pub fn update_filters(&mut self, sample_rate: f32, bass_boost: f32, treble_boost: f32, volume_boost: f32, mic_eq: bool, noise_sup: bool, gate_sensitivity: f32) {
         let bass_gain = (bass_boost - 0.5) * 24.0;
         let treble_gain = (treble_boost - 0.5) * 24.0;
         self.linear_gain = if volume_boost >= 0.5 {
@@ -341,32 +389,35 @@ impl LiveDspSession {
         }
 
         self.noise_suppression = noise_sup;
+
+        // Map sensitivity (0.0–1.0) to threshold range:
+        //   sensitivity=0.0 → open=0.040 (hard to trigger, only loud speech)
+        //   sensitivity=0.5 → open=0.012 (good default for average mic)
+        //   sensitivity=1.0 → open=0.004 (very sensitive, triggers on whispers)
+        let s = gate_sensitivity.clamp(0.0, 1.0);
+        self.open_threshold  = 0.040 * (1.0 - s) + 0.004 * s;
+        self.close_threshold = self.open_threshold * 0.40; // always 40% of open threshold
     }
 
     pub fn process_chunk(&mut self, input: &[f32], output: &mut [f32]) {
-        let threshold = 0.015; 
-        let attack = 0.95; 
+        // Use thresholds set by update_filters (gate_sensitivity driven)
+        let open_threshold  = self.open_threshold;
+        let close_threshold = self.close_threshold;
+        // Knee spans from close_threshold up to open_threshold
+        let knee_width = (open_threshold - close_threshold).max(0.001);
+
+        // attack ~2ms, release ~150ms (keeps gate open through brief pauses between syllables)
+        let attack_coef  = (-1.0_f32 / (0.002 * self.sample_rate)).exp();
+        let release_coef = (-1.0_f32 / (0.150 * self.sample_rate)).exp();
+
+        // Hold: keep gate open ~80ms after level drops, avoids chopping syllable tails
+        let hold_samples = (0.080 * self.sample_rate) as i32;
 
         for (i, &sample) in input.iter().enumerate() {
             if i >= output.len() { break; }
             let mut processed = sample;
-            
-            if self.noise_suppression {
-                let abs_sample = processed.abs();
-                if abs_sample > self.envelope {
-                    self.envelope = abs_sample;
-                } else {
-                    self.envelope = attack * self.envelope + (1.0 - attack) * abs_sample;
-                }
 
-                let gain = if self.envelope < threshold {
-                    (self.envelope / threshold).powi(2)
-                } else {
-                    1.0
-                };
-                processed *= gain;
-            }
-
+            // ── Step 1: Apply mic EQ BEFORE noise gate so gate isn't triggered by rumble/hiss ──
             if self.mic_eq_enhancement {
                 processed = self.rumble_filter1.process(processed);
                 processed = self.rumble_filter2.process(processed);
@@ -375,14 +426,53 @@ impl LiveDspSession {
                 processed = self.notch50_filter.process(processed);
                 processed = self.notch60_filter.process(processed);
             }
-            
+
+            // ── Step 2: Noise gate with fast attack / slow release envelope + hysteresis ──
+            if self.noise_suppression {
+                let abs_sample = processed.abs();
+
+                // Envelope follower
+                if abs_sample > self.envelope {
+                    self.envelope = attack_coef * self.envelope + (1.0 - attack_coef) * abs_sample;
+                } else {
+                    self.envelope = release_coef * self.envelope + (1.0 - release_coef) * abs_sample;
+                }
+
+                // Hysteresis state machine
+                if self.gate_open {
+                    if self.envelope < close_threshold {
+                        if self.hold_counter > 0 {
+                            self.hold_counter -= 1;
+                        } else {
+                            self.gate_open = false;
+                        }
+                    } else {
+                        self.hold_counter = hold_samples;
+                    }
+                } else if self.envelope >= open_threshold {
+                    self.gate_open = true;
+                    self.hold_counter = hold_samples;
+                }
+
+                // Smooth knee gain
+                let gain = if self.gate_open {
+                    1.0_f32
+                } else if self.envelope > close_threshold {
+                    ((self.envelope - close_threshold) / knee_width).min(1.0)
+                } else {
+                    0.0_f32
+                };
+                processed *= gain;
+            }
+
+            // ── Step 3: EQ shaping and volume ──
             processed = self.bass_filter.process(processed);
             processed = self.treble_filter.process(processed);
             processed *= self.linear_gain;
-            
-            if processed > 1.0 { processed = 1.0; }
-            if processed < -1.0 { processed = -1.0; }
-            
+
+            // Hard clip to prevent PCM overflow
+            processed = processed.clamp(-1.0, 1.0);
+
             output[i] = processed;
         }
     }
