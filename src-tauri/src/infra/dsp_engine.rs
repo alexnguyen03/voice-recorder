@@ -240,6 +240,7 @@ impl AudioProcessor for DspEngine {
     fn enhance_voice(
         &self,
         input: &[f32],
+        sample_rate: f32,
         bass_boost: f32,
         treble_boost: f32,
         volume_boost: f32,
@@ -259,7 +260,6 @@ impl AudioProcessor for DspEngine {
             0.25 + (volume_boost / 0.5) * 0.75
         };
 
-        let sample_rate = 44100.0;
         // Bass: lowshelf at 200Hz — matches Web Audio bassNode.frequency = 200
         let mut bass_filter   = BiquadFilter::new_low_shelf(sample_rate, 200.0, bass_gain);
         // Treble: highshelf at 4000Hz — matches Web Audio trebleNode.frequency = 4000
@@ -357,8 +357,9 @@ impl LiveDspSession {
     }
 
     pub fn update_filters(&mut self, sample_rate: f32, bass_boost: f32, treble_boost: f32, volume_boost: f32, mic_eq: bool, noise_sup: bool, gate_sensitivity: f32) {
-        let bass_gain = (bass_boost - 0.5) * 24.0;
-        let treble_gain = (treble_boost - 0.5) * 24.0;
+        // MUST match enhance_voice() and WaveformEditor Web Audio: (value - 0.5) * 30 → ±15 dB
+        let bass_gain = (bass_boost - 0.5) * 30.0;
+        let treble_gain = (treble_boost - 0.5) * 30.0;
         self.linear_gain = if volume_boost >= 0.5 {
             1.0 + (volume_boost - 0.5) * 6.0
         } else {
@@ -372,7 +373,7 @@ impl LiveDspSession {
         };
 
         copy_coeffs(&mut self.bass_filter, BiquadFilter::new_low_shelf(sample_rate, 200.0, bass_gain));
-        copy_coeffs(&mut self.treble_filter, BiquadFilter::new_high_shelf(sample_rate, 5000.0, treble_gain));
+        copy_coeffs(&mut self.treble_filter, BiquadFilter::new_high_shelf(sample_rate, 4000.0, treble_gain));
 
         self.mic_eq_enhancement = mic_eq;
         if mic_eq {

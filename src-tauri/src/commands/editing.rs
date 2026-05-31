@@ -95,6 +95,7 @@ pub fn apply_voice_effects(
     //    (all in one enhance_voice pass)
     buffer.samples = dsp.enhance_voice(
         &buffer.samples,
+        buffer.sample_rate as f32,
         bass_boost,
         treble_boost,
         volume_boost,

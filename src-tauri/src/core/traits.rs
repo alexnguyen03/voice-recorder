@@ -34,6 +34,7 @@ pub trait AudioProcessor: Send + Sync {
     fn enhance_voice(
         &self,
         input: &[f32],
+        sample_rate: f32,
         bass_boost: f32,
         treble_boost: f32,
         volume_boost: f32,
