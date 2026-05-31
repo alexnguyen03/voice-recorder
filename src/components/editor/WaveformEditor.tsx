@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { VoiceLayerFrame } from "../../services/audioService";
 
 /** Methods exposed to parent via ref */
 export interface WaveformEditorHandle {
@@ -24,15 +25,6 @@ interface WaveformEditorProps {
   editMode?: 'trim' | 'cut' | null;
   /** Fired when play state changes */
   onPlayStateChange?: (playing: boolean) => void;
-}
-
-export interface VoiceLayerFrame {
-  start_ms: number;
-  end_ms: number;
-  main_voice: number;
-  sibilance: number;
-  breath: number;
-  plosive: number;
 }
 
 /**
