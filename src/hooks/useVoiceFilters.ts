@@ -9,6 +9,8 @@ const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNA
 export type VoiceFilterState = Required<VoiceEffectOptions>;
 
 export const DEFAULT_FILTERS: VoiceFilterState = {
+  // Hum Removal
+  hum_removal_enabled:       false,
   // Noise & Wind
   enable_noise_suppression:  false,
   noise_gate_sensitivity:    0.5,
@@ -42,6 +44,7 @@ export const toAudioUrl = (filePath: string): string => {
 };
 
 const isDefaultFilters = (f: VoiceFilterState): boolean =>
+  !f.hum_removal_enabled &&
   !f.enable_noise_suppression &&
   f.noise_gate_sensitivity    === 0.5 &&
   !f.wind_suppression &&
@@ -64,6 +67,7 @@ const isDefaultFilters = (f: VoiceFilterState): boolean =>
 
 /** Restore saved FilterParams from meta sidecar into VoiceFilterState. */
 const fromFilterParams = (fp: FilterParams): VoiceFilterState => ({
+  hum_removal_enabled:      fp.hum_removal_enabled       ?? false,
   enable_noise_suppression: fp.noise_suppression,
   noise_gate_sensitivity:   fp.noise_gate_sensitivity ?? 0.5,
   wind_suppression:         fp.wind_suppression       ?? false,

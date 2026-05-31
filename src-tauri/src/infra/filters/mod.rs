@@ -57,6 +57,7 @@ pub mod eq_shelf;
 pub mod mid_cut;
 pub mod spectral_dehiss;
 pub mod final_limiter;
+pub mod hum_removal;
 
 // Re-exports for ergonomic use inside the crate
 pub use bypass::BypassFilter;
@@ -69,3 +70,4 @@ pub use eq_shelf::{BassShelfFilter, TrebleShelfFilter};
 pub use mid_cut::MidCutFilter;
 pub use spectral_dehiss::SpectralDeHiss;
 pub use final_limiter::FinalLimiter;
+pub use hum_removal::HumRemovalFilter;

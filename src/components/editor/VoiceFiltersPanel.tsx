@@ -5,6 +5,7 @@ import { NoiseWindGroup }    from "./filter-groups/NoiseWindGroup";
 import { BreathPlosiveGroup } from "./filter-groups/BreathPlosiveGroup";
 import { EqToneGroup }       from "./filter-groups/EqToneGroup";
 import { VocalCleanupGroup } from "./filter-groups/VocalCleanupGroup";
+import { VoicePresetsGroup } from "./filter-groups/VoicePresetsGroup";
 
 interface VoiceFiltersPanelProps {
   show: boolean;
@@ -44,6 +45,7 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
   exportWithFilters,
 }) => {
   const totalActive = [
+    filters.hum_removal_enabled,
     filters.enable_noise_suppression,
     filters.wind_suppression,
     filters.de_hiss_enabled,
@@ -111,6 +113,13 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
               — 10-stage pipeline. What you hear = what gets exported.
             </p>
           </div>
+
+          {/* ── Preset quick-apply bar ─────────────────────────────── */}
+          <VoicePresetsGroup
+            filters={filters}
+            disabled={isProcessing}
+            updateFilters={updateFilters}
+          />
 
           {/* ── Filter groups (Composite children) ──────────────────── */}
           <div className="px-3 pt-1">

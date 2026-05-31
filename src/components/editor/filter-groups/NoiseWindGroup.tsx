@@ -21,6 +21,7 @@ export const NoiseWindGroup: React.FC<Props> = ({ filters, disabled, updateFilte
   const [open, setOpen] = useState(true);
 
   const activeCount = [
+    filters.hum_removal_enabled,
     filters.enable_noise_suppression,
     filters.wind_suppression,
     filters.de_hiss_enabled,
@@ -41,6 +42,15 @@ export const NoiseWindGroup: React.FC<Props> = ({ filters, disabled, updateFilte
         ${open ? "max-h-[400px] opacity-100 pb-3" : "max-h-0 opacity-0"}`}
       >
         <div className="flex flex-col gap-3 px-1">
+          {/* Electrical Hum Removal */}
+          <Toggle
+            label="Electrical Hum Removal"
+            helper="Kills 50 Hz + 60 Hz power-line buzz — fixes the 'è è' background hum"
+            checked={filters.hum_removal_enabled}
+            disabled={disabled}
+            onChange={v => updateFilters({ hum_removal_enabled: v })}
+          />
+
           {/* Wind Suppressor */}
           <ToggleWithSlider
             toggleLabel="Wind Suppressor"

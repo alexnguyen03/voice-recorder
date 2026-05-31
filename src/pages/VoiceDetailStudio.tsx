@@ -31,6 +31,9 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  // When the user clicks "Edit Vocals with Filters" we swap the filter source
+  // to the separated vocals stem without changing the waveform / player.
+  const [filterSourceFile, setFilterSourceFile] = useState(selectedFile);
 
   const {
     filters,
@@ -43,7 +46,19 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     updateFilters,
     resetFilters,
     exportWithFilters,
-  } = useVoiceFilters({ selectedFile, onApplyEffects });
+  } = useVoiceFilters({ selectedFile: filterSourceFile, onApplyEffects });
+
+  // Reset filterSourceFile whenever the user switches to a different recording
+  useEffect(() => {
+    setFilterSourceFile(selectedFile);
+  }, [selectedFile]);
+
+  const handleUseVocals = (vocalsPath: string) => {
+    setFilterSourceFile(vocalsPath);
+    setShowFilters(true);
+  };
+
+  const isEditingVocalStem = filterSourceFile !== selectedFile;
 
   const handleConfirm = useCallback(async () => {
     if (actionMode === "trim") await onTrim(trimStart, trimEnd);
@@ -85,6 +100,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         hasPreview={hasPreview}
         isProcessing={isProcessing}
         processingLabel={processingLabel}
+        isEditingVocalStem={isEditingVocalStem}
         onBack={onBack}
       />
 
@@ -135,7 +151,10 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         exportWithFilters={exportWithFilters}
       />
 
-      <VocalSeparationPanel selectedFile={selectedFile} />
+      <VocalSeparationPanel
+        selectedFile={selectedFile}
+        onUseVocals={handleUseVocals}
+      />
     </div>
   );
 };
@@ -145,10 +164,11 @@ interface HeaderProps {
   hasPreview: boolean;
   isProcessing: boolean;
   processingLabel: string;
+  isEditingVocalStem: boolean;
   onBack: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ fileName, hasPreview, isProcessing, processingLabel, onBack }) => (
+const Header: React.FC<HeaderProps> = ({ fileName, hasPreview, isProcessing, processingLabel, isEditingVocalStem, onBack }) => (
   <div className="flex items-center gap-3 mb-4">
     <button
       onClick={onBack}
@@ -159,9 +179,19 @@ const Header: React.FC<HeaderProps> = ({ fileName, hasPreview, isProcessing, pro
     </button>
     <span className="text-slate-300 dark:text-slate-600 select-none">.</span>
     <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{fileName}</span>
-    {hasPreview && !isProcessing && (
+    {isEditingVocalStem && (
+      <span className="ml-auto px-1.5 py-0.5 rounded-sm bg-fuchsia-100 dark:bg-fuchsia-950/50 text-fuchsia-600 dark:text-fuchsia-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+        VOCAL STEM
+      </span>
+    )}
+    {hasPreview && !isProcessing && !isEditingVocalStem && (
       <span className="ml-auto px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
         RUST PREVIEW
+      </span>
+    )}
+    {hasPreview && !isProcessing && isEditingVocalStem && (
+      <span className="px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+        PREVIEW
       </span>
     )}
     {isProcessing && (

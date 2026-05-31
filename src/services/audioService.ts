@@ -16,6 +16,8 @@ export interface RecordConfig {
 
 /** All voice effect options — mirrors PipelineConfig + VoiceLayerOptions on the Rust side. */
 export interface VoiceEffectOptions {
+  // ── Hum Removal ─────────────────────────────────────────────────────────────
+  hum_removal_enabled: boolean;
   // ── Noise & Wind ────────────────────────────────────────────────────────────
   enable_noise_suppression: boolean;
   noise_gate_sensitivity: number;    // 0..1 (0=tight, 1=very sensitive)
@@ -61,6 +63,7 @@ export interface RecordingInfo {
 
 /** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams. */
 export interface FilterParams {
+  hum_removal_enabled: boolean;
   bass_boost: number;
   treble_boost: number;
   volume_boost: number;
@@ -96,6 +99,8 @@ const isTauri = (): boolean =>
 /** Maps VoiceEffectOptions to the flat camelCase args expected by Tauri commands. */
 const toCommandArgs = (filePath: string, o: VoiceEffectOptions) => ({
   filePath,
+  // Hum Removal
+  humRemovalEnabled:      o.hum_removal_enabled,
   // Noise & Wind
   enableNoiseSuppression: o.enable_noise_suppression,
   noiseGateSensitivity:   o.noise_gate_sensitivity,

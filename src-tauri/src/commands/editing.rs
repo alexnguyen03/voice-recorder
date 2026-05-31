@@ -61,6 +61,8 @@ pub fn cut_audio_segment(
 pub fn apply_voice_effects(
     app: AppHandle,
     file_path: String,
+    // Hum Removal
+    hum_removal_enabled: bool,
     // Noise & Wind
     enable_noise_suppression: bool,
     noise_gate_sensitivity: f32,
@@ -106,10 +108,11 @@ pub fn apply_voice_effects(
         },
     )?;
 
-    // Full 10-stage DSP pipeline
+    // Full 11-stage DSP pipeline
     let config = PipelineConfig {
         sample_rate,
         channels,
+        hum_removal_enabled,
         wind_suppression,
         wind_intensity,
         noise_suppression: enable_noise_suppression,

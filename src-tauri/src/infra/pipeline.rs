@@ -1,5 +1,6 @@
 use crate::infra::filters::{
     AudioFilter, BypassFilter,
+    HumRemovalFilter,
     WindSuppressor, BreathSuppressor, PlosiveReducer,
     NoiseGate, MicEqFilter,
     BassShelfFilter, TrebleShelfFilter, MidCutFilter,
@@ -45,6 +46,8 @@ impl DspPipeline {
 pub struct PipelineConfig {
     pub sample_rate:       f32,
     pub channels:          u16,
+    // Hum Removal (50/60 Hz electrical mains)
+    pub hum_removal_enabled: bool,
     // Noise & Wind
     pub wind_suppression:  bool,
     pub wind_intensity:    f32,
@@ -73,6 +76,7 @@ impl Default for PipelineConfig {
         Self {
             sample_rate:          44100.0,
             channels:             1,
+            hum_removal_enabled:  false,
             wind_suppression:     false,
             wind_intensity:       0.5,
             noise_suppression:    false,
@@ -113,6 +117,17 @@ pub struct DspPipelineBuilder {
 impl DspPipelineBuilder {
     pub fn new(config: PipelineConfig) -> Self {
         Self { chain: Vec::new(), config }
+    }
+
+    // ── Stage 0: Hum Removal ──────────────────────────────────────────────────
+    pub fn with_hum_removal(mut self) -> Self {
+        let f: Box<dyn AudioFilter> = if self.config.hum_removal_enabled {
+            Box::new(HumRemovalFilter::new(self.config.sample_rate))
+        } else {
+            Box::new(BypassFilter)
+        };
+        self.chain.push(f);
+        self
     }
 
     // ── Stage 1: Wind Suppressor ──────────────────────────────────────────────
@@ -215,20 +230,21 @@ impl DspPipelineBuilder {
         self
     }
 
-    /// Build the complete standard voice pipeline (all 10 stages, fixed order).
+    /// Build the complete standard voice pipeline (all 11 stages, fixed order).
     pub fn build_standard(self) -> DspPipeline {
         let channels = self.config.channels;
         let pipeline = self
-            .with_wind_suppressor()
-            .with_plosive_reducer()
-            .with_breath_suppressor()
-            .with_mic_eq()
-            .with_noise_gate()
-            .with_bass_shelf()
-            .with_treble_shelf()
-            .with_mid_cut()
-            .with_de_hiss()
-            .with_final_limiter();
+            .with_hum_removal()        // Stage  0
+            .with_wind_suppressor()    // Stage  1
+            .with_plosive_reducer()    // Stage  2
+            .with_breath_suppressor()  // Stage  3
+            .with_mic_eq()             // Stage  4
+            .with_noise_gate()         // Stage  5
+            .with_bass_shelf()         // Stage  6
+            .with_treble_shelf()       // Stage  7
+            .with_mid_cut()            // Stage  8
+            .with_de_hiss()            // Stage  9
+            .with_final_limiter();     // Stage 10
         DspPipeline { chain: pipeline.chain, channels }
     }
 

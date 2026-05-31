@@ -14,6 +14,8 @@ pub struct FilterParams {
     pub noise_gate_sensitivity: f32,
     pub mic_eq_enhancement: bool,
     #[serde(default)]
+    pub hum_removal_enabled: bool,
+    #[serde(default)]
     pub ml_voice_layers_enabled: bool,
     #[serde(default)]
     pub reduce_sibilance: bool,
@@ -93,6 +95,8 @@ fn preview_paths(app: &AppHandle, file_path: &str) -> Result<(PathBuf, PathBuf),
 pub fn create_preview(
     app: AppHandle,
     file_path: String,
+    // Hum Removal
+    hum_removal_enabled: bool,
     // Noise & Wind
     enable_noise_suppression: bool,
     noise_gate_sensitivity: f32,
@@ -139,10 +143,11 @@ pub fn create_preview(
         },
     )?;
 
-    // 3. Build and run the full 10-stage DSP pipeline
+    // 3. Build and run the full 11-stage DSP pipeline
     let config = PipelineConfig {
         sample_rate,
         channels,
+        hum_removal_enabled,
         wind_suppression,
         wind_intensity,
         noise_suppression: enable_noise_suppression,
@@ -181,6 +186,7 @@ pub fn create_preview(
             noise_suppression: enable_noise_suppression,
             noise_gate_sensitivity,
             mic_eq_enhancement,
+            hum_removal_enabled,
             ml_voice_layers_enabled,
             reduce_sibilance,
             reduce_breath,

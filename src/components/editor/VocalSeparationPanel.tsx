@@ -1,13 +1,14 @@
 import React, { useState, useRef } from "react";
 import {
   Scissors, ChevronDown, Loader2, Music2, Mic2,
-  Download, AlertCircle, Play, Pause, CheckCircle2,
+  Download, AlertCircle, Play, Pause, CheckCircle2, Wand2,
 } from "lucide-react";
 import { useSeparation, SeparationOutputMode } from "../../hooks/useSeparation";
 
 interface VocalSeparationPanelProps {
   selectedFile: string;
   onFileOpen?: (path: string) => void;
+  onUseVocals?: (path: string) => void;
 }
 
 const MODE_OPTIONS: { value: SeparationOutputMode; label: string; icon: React.ReactNode; desc: string }[] = [
@@ -56,6 +57,7 @@ const StemPlayer: React.FC<{ url: string; label: string; accent: string }> = ({ 
 
 export const VocalSeparationPanel: React.FC<VocalSeparationPanelProps> = ({
   selectedFile,
+  onUseVocals,
 }) => {
   const [open,   setOpen]   = useState(false);
   const [mode,   setMode]   = useState<SeparationOutputMode>("vocals_only");
@@ -196,6 +198,19 @@ export const VocalSeparationPanel: React.FC<VocalSeparationPanelProps> = ({
                     label="Background"
                     accent="border-slate-500/40"
                   />
+                )}
+                {/* Edit Vocals with Filters */}
+                {vocalsAudioUrl && state.result?.vocals_path && onUseVocals && (
+                  <button
+                    onClick={() => onUseVocals(state.result!.vocals_path!)}
+                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg
+                      text-[11px] font-bold cursor-pointer transition-all active:scale-95
+                      bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500
+                      hover:to-fuchsia-500 text-white shadow-sm shadow-violet-900/40"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    Edit Vocals with Filters
+                  </button>
                 )}
               </div>
             )}
