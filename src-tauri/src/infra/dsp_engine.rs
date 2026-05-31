@@ -246,21 +246,25 @@ impl AudioProcessor for DspEngine {
         volume_boost: f32,
         mic_eq_enhancement: bool,
     ) -> Result<Vec<f32>, AppError> {
-        // Map 0.0..1.0 parameters to dynamic gains from -12dB up to +12dB
-        let bass_gain = (bass_boost - 0.5) * 24.0;
-        let treble_gain = (treble_boost - 0.5) * 24.0;
+        // Map 0.0..1.0 parameters to dynamic gains — MUST match Web Audio API values in WaveformEditor:
+        //   bassBoost.gain  = (value - 0.5) * 30  → range ±15dB
+        //   trebleBoost.gain = (value - 0.5) * 30 → range ±15dB
+        let bass_gain   = (bass_boost   - 0.5) * 30.0;
+        let treble_gain = (treble_boost - 0.5) * 30.0;
         
         // Map volume_boost (0.0..1.0) to linear gain multiplier.
-        // 0.5 = 1x (neutral), 1.0 = 4x (+12dB), 0.0 = 0.25x (-12dB)
+        // 0.5 = 1x (neutral), 1.0 = 4x, 0.0 = 0.25x — matches WaveformEditor gainNode formula
         let linear_gain = if volume_boost >= 0.5 {
-            1.0 + (volume_boost - 0.5) * 6.0 // up to 4x
+            1.0 + (volume_boost - 0.5) * 6.0
         } else {
-            0.25 + (volume_boost / 0.5) * 0.75 // down to 0.25x
+            0.25 + (volume_boost / 0.5) * 0.75
         };
 
         let sample_rate = 44100.0;
-        let mut bass_filter = BiquadFilter::new_low_shelf(sample_rate, 200.0, bass_gain);
-        let mut treble_filter = BiquadFilter::new_high_shelf(sample_rate, 5000.0, treble_gain);
+        // Bass: lowshelf at 200Hz — matches Web Audio bassNode.frequency = 200
+        let mut bass_filter   = BiquadFilter::new_low_shelf(sample_rate, 200.0, bass_gain);
+        // Treble: highshelf at 4000Hz — matches Web Audio trebleNode.frequency = 4000
+        let mut treble_filter = BiquadFilter::new_high_shelf(sample_rate, 4000.0, treble_gain);
         
         // Anti-hum / Anti-hiss filters for low-quality mics
         let mut rumble_filter = BiquadFilter::new_bypass();
