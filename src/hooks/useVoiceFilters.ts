@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { AudioService, VoiceEffectOptions, VoiceLayerFrame } from "../services/audioService";
+import { AudioService, VoiceEffectOptions } from "../services/audioService";
 
 const PREVIEW_DEBOUNCE_MS = 500;
 const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -17,6 +17,7 @@ const DEFAULT_FILTERS: VoiceFilterState = {
   reduce_sibilance: false,
   reduce_breath: false,
   reduce_plosive: false,
+  smooth_voice_cutoff: false,
 };
 
 export const toAudioUrl = (filePath: string): string => {
@@ -34,7 +35,8 @@ const isDefaultFilters = (filters: VoiceFilterState): boolean => (
   !filters.ml_voice_layers_enabled &&
   !filters.reduce_sibilance &&
   !filters.reduce_breath &&
-  !filters.reduce_plosive
+  !filters.reduce_plosive &&
+  !filters.smooth_voice_cutoff
 );
 
 interface UseVoiceFiltersArgs {
@@ -48,7 +50,6 @@ export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFilter
   const [hasPreview, setHasPreview] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [voiceLayers, setVoiceLayers] = useState<VoiceLayerFrame[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const schedulePreview = useCallback((nextFilters: VoiceFilterState) => {
@@ -121,23 +122,13 @@ export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFilter
         reduce_sibilance: meta.filters.reduce_sibilance ?? false,
         reduce_breath: meta.filters.reduce_breath ?? false,
         reduce_plosive: meta.filters.reduce_plosive ?? false,
+        smooth_voice_cutoff: meta.filters.smooth_voice_cutoff ?? false,
       };
       setFilters(restored);
       setActiveAudioUrl(toAudioUrl(meta.preview_file));
       setHasPreview(true);
     });
 
-    return () => {
-      active = false;
-    };
-  }, [selectedFile]);
-
-  useEffect(() => {
-    let active = true;
-    setVoiceLayers([]);
-    AudioService.analyzeVoiceLayers(selectedFile).then((frames) => {
-      if (active) setVoiceLayers(frames);
-    });
     return () => {
       active = false;
     };
@@ -155,7 +146,6 @@ export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFilter
     hasPreview,
     isProcessing,
     previewError,
-    voiceLayers,
     isFiltersActive: !isDefaultFilters(filters),
     processingLabel: filters.ml_voice_layers_enabled ? "DOWNLOADING MODEL / RENDERING" : "RENDERING",
     updateFilters,

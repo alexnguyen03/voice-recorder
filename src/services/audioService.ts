@@ -24,6 +24,7 @@ export interface VoiceEffectOptions {
   reduce_sibilance?: boolean;
   reduce_breath?: boolean;
   reduce_plosive?: boolean;
+  smooth_voice_cutoff?: boolean;
 }
 
 /** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams */
@@ -37,6 +38,7 @@ export interface FilterParams {
   reduce_sibilance?: boolean;
   reduce_breath?: boolean;
   reduce_plosive?: boolean;
+  smooth_voice_cutoff?: boolean;
 }
 
 /** Preview session metadata returned by load_preview_meta */
@@ -46,16 +48,6 @@ export interface PreviewMeta {
   preview_file: string;
   filters: FilterParams;
 }
-
-export interface VoiceLayerFrame {
-  start_ms: number;
-  end_ms: number;
-  main_voice: number;
-  sibilance: number;
-  breath: number;
-  plosive: number;
-}
-
 
 /**
  * Helper to check if the application is running inside a native Tauri WebView environment.
@@ -238,6 +230,7 @@ export const AudioService = {
         reduceSibilance: options.reduce_sibilance ?? false,
         reduceBreath: options.reduce_breath ?? false,
         reducePlosive: options.reduce_plosive ?? false,
+        smoothVoiceCutoff: options.smooth_voice_cutoff ?? false,
       });
     } catch (error) {
       console.error("Failed to apply voice effects:", error);
@@ -289,6 +282,7 @@ export const AudioService = {
         reduceSibilance:        options.reduce_sibilance ?? false,
         reduceBreath:           options.reduce_breath ?? false,
         reducePlosive:          options.reduce_plosive ?? false,
+        smoothVoiceCutoff:      options.smooth_voice_cutoff ?? false,
       });
     } catch (error) {
       console.error("Failed to create preview:", error);
@@ -320,16 +314,6 @@ export const AudioService = {
       await invoke("clear_preview", { filePath });
     } catch (error) {
       console.error("Failed to clear preview:", error);
-    }
-  },
-
-  async analyzeVoiceLayers(filePath: string): Promise<VoiceLayerFrame[]> {
-    if (!isTauri()) return [];
-    try {
-      return await invoke<VoiceLayerFrame[]>("analyze_voice_layers", { filePath });
-    } catch (error) {
-      console.error("Failed to analyze voice layers:", error);
-      return [];
     }
   },
 };

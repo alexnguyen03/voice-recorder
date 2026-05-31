@@ -89,6 +89,7 @@ pub fn apply_voice_effects(
     reduce_sibilance: bool,
     reduce_breath: bool,
     reduce_plosive: bool,
+    smooth_voice_cutoff: bool,
 ) -> Result<String, String> {
     let storage = LocalStorage::new();
     let dsp = DspEngine::new();
@@ -105,6 +106,7 @@ pub fn apply_voice_effects(
             reduce_sibilance,
             reduce_breath,
             reduce_plosive,
+            smooth_voice_cutoff,
         },
     )?;
 

@@ -174,6 +174,7 @@ function App() {
     reduce_sibilance?: boolean;
     reduce_breath?: boolean;
     reduce_plosive?: boolean;
+    smooth_voice_cutoff?: boolean;
   }) => {
     if (!selectedFile) return;
     setStatusMessage("Exporting with filters...");
@@ -188,6 +189,7 @@ function App() {
         reduce_sibilance: effects.reduce_sibilance,
         reduce_breath: effects.reduce_breath,
         reduce_plosive: effects.reduce_plosive,
+        smooth_voice_cutoff: effects.smooth_voice_cutoff,
       });
       // Non-destructive: stay on the original file, just add the export to library
       setStatusMessage(`Exported: ${getFileName(exportPath)}`);

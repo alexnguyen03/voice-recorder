@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
-use serde::Serialize;
 
 use crate::core::models::AudioBuffer;
 
@@ -14,25 +13,20 @@ pub struct VoiceLayerOptions {
     pub reduce_sibilance: bool,
     pub reduce_breath: bool,
     pub reduce_plosive: bool,
+    pub smooth_voice_cutoff: bool,
 }
 
 impl VoiceLayerOptions {
     pub fn any_enabled(&self) -> bool {
-        self.ml_voice_layers_enabled || self.reduce_sibilance || self.reduce_breath || self.reduce_plosive
+        self.ml_voice_layers_enabled
+            || self.reduce_sibilance
+            || self.reduce_breath
+            || self.reduce_plosive
+            || self.smooth_voice_cutoff
     }
 }
 
 pub struct VoiceLayerEngine;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct VoiceLayerFrame {
-    pub start_ms: u32,
-    pub end_ms: u32,
-    pub main_voice: f32,
-    pub sibilance: f32,
-    pub breath: f32,
-    pub plosive: f32,
-}
 
 impl VoiceLayerEngine {
     pub fn new() -> Self {
@@ -66,105 +60,11 @@ impl VoiceLayerEngine {
         if options.reduce_sibilance {
             self.reduce_sibilance(buffer);
         }
+        if options.smooth_voice_cutoff {
+            self.smooth_voice_cutoff(buffer);
+        }
 
         Ok(())
-    }
-
-    pub fn analyze_layers(&self, buffer: &AudioBuffer) -> Vec<VoiceLayerFrame> {
-        let sample_rate = buffer.sample_rate.max(1) as usize;
-        let frame_size = ((sample_rate as f32 * 0.030).round() as usize).max(256);
-        let mono = downmix_to_mono(buffer);
-
-        if mono.len() < frame_size {
-            return Vec::new();
-        }
-
-        let mut frames = Vec::new();
-        let mut prev_rms = 0.0_f32;
-        let mut low_120 = 0.0_f32;
-        let mut low_180 = 0.0_f32;
-        let mut low_1k = 0.0_f32;
-        let mut low_36k = 0.0_f32;
-        let mut low_4k = 0.0_f32;
-        let mut low_9k = 0.0_f32;
-        let mut low_10k = 0.0_f32;
-        let alpha_120 = one_pole_alpha(120.0, sample_rate as f32);
-        let alpha_180 = one_pole_alpha(180.0, sample_rate as f32);
-        let alpha_1k = one_pole_alpha(1_000.0, sample_rate as f32);
-        let alpha_36k = one_pole_alpha(3_600.0, sample_rate as f32);
-        let alpha_4k = one_pole_alpha(4_000.0, sample_rate as f32);
-        let alpha_9k = one_pole_alpha(9_000.0, sample_rate as f32);
-        let alpha_10k = one_pole_alpha(10_000.0, sample_rate as f32);
-
-        let mut start = 0usize;
-        while start + frame_size <= mono.len() {
-            let frame = &mono[start..start + frame_size];
-            let mut total_energy = 0.0_f32;
-            let mut low_energy = 0.0_f32;
-            let mut voice_energy = 0.0_f32;
-            let mut sibilance_energy = 0.0_f32;
-            let mut broadband_energy = 0.0_f32;
-            let mut crossings = 0usize;
-            let mut prev = frame[0];
-
-            for &sample in frame {
-                low_120 += alpha_120 * (sample - low_120);
-                low_180 += alpha_180 * (sample - low_180);
-                low_1k += alpha_1k * (sample - low_1k);
-                low_36k += alpha_36k * (sample - low_36k);
-                low_4k += alpha_4k * (sample - low_4k);
-                low_9k += alpha_9k * (sample - low_9k);
-                low_10k += alpha_10k * (sample - low_10k);
-
-                let low_band = low_180;
-                let voice_band = low_36k - low_120;
-                let sibilance_band = low_10k - low_4k;
-                let broadband_band = low_9k - low_1k;
-
-                total_energy += sample * sample;
-                low_energy += low_band * low_band;
-                voice_energy += voice_band * voice_band;
-                sibilance_energy += sibilance_band * sibilance_band;
-                broadband_energy += broadband_band * broadband_band;
-
-                if (prev >= 0.0 && sample < 0.0) || (prev < 0.0 && sample >= 0.0) {
-                    crossings += 1;
-                }
-                prev = sample;
-            }
-
-            let inv_len = 1.0 / frame.len() as f32;
-            let rms = (total_energy * inv_len).sqrt();
-            let zcr = crossings as f32 / frame.len().saturating_sub(1).max(1) as f32;
-            let total_energy = total_energy * inv_len + 0.000001;
-
-            let voice_ratio = (voice_energy * inv_len) / total_energy;
-            let sibilance_ratio = (sibilance_energy * inv_len) / total_energy;
-            let low_ratio = (low_energy * inv_len) / total_energy;
-            let broadband_ratio = (broadband_energy * inv_len) / total_energy;
-            let transient = (rms - prev_rms).max(0.0);
-
-            let main_voice = score((rms - 0.012) / 0.09) * score((voice_ratio - 0.30) / 0.55);
-            let sibilance = score((sibilance_ratio - 0.16) / 0.45) * score((rms - 0.01) / 0.08);
-            let breath = score((rms - 0.006) / 0.055)
-                * (1.0 - score((rms - 0.08) / 0.08))
-                * score((zcr - 0.08) / 0.22)
-                * score((broadband_ratio - 0.25) / 0.45);
-            let plosive = score((low_ratio - 0.22) / 0.55) * score((transient - 0.015) / 0.09);
-
-            frames.push(VoiceLayerFrame {
-                start_ms: ((start as f32 / sample_rate as f32) * 1000.0).round() as u32,
-                end_ms: (((start + frame_size) as f32 / sample_rate as f32) * 1000.0).round() as u32,
-                main_voice: main_voice.clamp(0.0, 1.0),
-                sibilance: sibilance.clamp(0.0, 1.0),
-                breath: breath.clamp(0.0, 1.0),
-                plosive: plosive.clamp(0.0, 1.0),
-            });
-
-            prev_rms = rms;
-            start += frame_size;
-        }
-        smooth_frames(frames)
     }
 
     fn model_dir(&self, app: &AppHandle) -> Result<PathBuf, String> {
@@ -326,6 +226,35 @@ impl VoiceLayerEngine {
             }
         }
     }
+
+    fn smooth_voice_cutoff(&self, buffer: &mut AudioBuffer) {
+        let channels = buffer.channels.max(1) as usize;
+        let sample_rate = buffer.sample_rate as f32;
+        let rise_alpha = one_pole_alpha(18.0, sample_rate);
+        let fall_alpha = one_pole_alpha(5.0, sample_rate);
+
+        for ch in 0..channels {
+            let mut baseline = 0.0_f32;
+            let mut idx = ch;
+
+            while idx < buffer.samples.len() {
+                let sample = buffer.samples[idx];
+                let abs = sample.abs();
+                let alpha = if abs > baseline { rise_alpha } else { fall_alpha };
+                baseline += alpha * (abs - baseline);
+
+                let ceiling = (baseline * 1.55 + 0.018).max(0.035);
+                if abs > ceiling {
+                    let softened = ceiling + (abs - ceiling) * 0.22;
+                    buffer.samples[idx] = sample.signum() * softened.min(1.0);
+                } else {
+                    buffer.samples[idx] = sample;
+                }
+
+                idx += channels;
+            }
+        }
+    }
 }
 
 fn one_pole_alpha(freq: f32, sample_rate: f32) -> f32 {
@@ -334,41 +263,4 @@ fn one_pole_alpha(freq: f32, sample_rate: f32) -> f32 {
     let dt = 1.0 / sample_rate;
     let rc = 1.0 / (2.0 * std::f32::consts::PI * freq);
     (dt / (rc + dt)).clamp(0.0, 1.0)
-}
-
-fn downmix_to_mono(buffer: &AudioBuffer) -> Vec<f32> {
-    let channels = buffer.channels.max(1) as usize;
-    if channels == 1 {
-        return buffer.samples.clone();
-    }
-
-    let mut mono = Vec::with_capacity(buffer.samples.len() / channels);
-    for frame in buffer.samples.chunks(channels) {
-        let sum: f32 = frame.iter().copied().sum();
-        mono.push(sum / frame.len() as f32);
-    }
-    mono
-}
-
-fn score(value: f32) -> f32 {
-    value.clamp(0.0, 1.0)
-}
-
-fn smooth_frames(mut frames: Vec<VoiceLayerFrame>) -> Vec<VoiceLayerFrame> {
-    if frames.len() < 3 {
-        return frames;
-    }
-
-    let original = frames.clone();
-    for i in 1..frames.len() - 1 {
-        frames[i].main_voice = avg3(original[i - 1].main_voice, original[i].main_voice, original[i + 1].main_voice);
-        frames[i].sibilance = avg3(original[i - 1].sibilance, original[i].sibilance, original[i + 1].sibilance);
-        frames[i].breath = avg3(original[i - 1].breath, original[i].breath, original[i + 1].breath);
-        frames[i].plosive = avg3(original[i - 1].plosive, original[i].plosive, original[i + 1].plosive);
-    }
-    frames
-}
-
-fn avg3(a: f32, b: f32, c: f32) -> f32 {
-    (a + b + c) / 3.0
 }

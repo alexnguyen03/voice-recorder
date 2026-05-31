@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
-import { VoiceLayerFrame } from "../../services/audioService";
 
 /** Methods exposed to parent via ref */
 export interface WaveformEditorHandle {
@@ -13,7 +12,6 @@ interface WaveformEditorProps {
   filePath: string;
   audioUrl: string;
   onTrim: (startMs: number, endMs: number) => void;
-  voiceLayers?: VoiceLayerFrame[];
   /** Fired whenever trim range changes */
   onTrimRangeChange?: (startMs: number, endMs: number) => void;
   /**
@@ -36,7 +34,6 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   filePath,
   audioUrl,
   onTrim: _onTrim,
-  voiceLayers = [],
   onTrimRangeChange,
   editMode = null,
   onPlayStateChange,
@@ -73,7 +70,6 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const startMsRef = useRef<number>(0);
   const endMsRef = useRef<number>(20000);
   const isDecodingRef = useRef<boolean>(false);
-  const voiceLayersRef = useRef<VoiceLayerFrame[]>([]);
 
   // Sync state to refs
   useEffect(() => { waveformRef.current = waveform; }, [waveform]);
@@ -82,7 +78,6 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   useEffect(() => { endMsRef.current = endMs; }, [endMs]);
   useEffect(() => { isDecodingRef.current = isDecoding; }, [isDecoding]);
   useEffect(() => { editModeRef.current = editMode ?? null; }, [editMode]);
-  useEffect(() => { voiceLayersRef.current = voiceLayers; draw(); }, [voiceLayers]);
 
   // Tear down AudioContext when the source file changes
   useEffect(() => {
@@ -272,32 +267,6 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     // Draw Playhead Line (Vertical Blue Line with round caps)
     const playheadPercent = dur > 0 ? curTime / dur : 0;
     const playheadX = startX + playheadPercent * totalBarsWidth;
-
-    // Draw voice-layer analysis overlays on top of waveform bars.
-    if (voiceLayersRef.current.length > 0 && dur > 0) {
-      const layerY = 8;
-      const layerH = 5;
-      const layers: Array<{ key: keyof VoiceLayerFrame; color: string; y: number; min: number }> = [
-        { key: "main_voice", color: "rgba(16,185,129,0.42)", y: layerY, min: 0.22 },
-        { key: "sibilance", color: "rgba(245,158,11,0.58)", y: layerY + 7, min: 0.18 },
-        { key: "breath", color: "rgba(14,165,233,0.50)", y: layerY + 14, min: 0.18 },
-        { key: "plosive", color: "rgba(244,63,94,0.58)", y: layerY + 21, min: 0.16 },
-      ];
-
-      for (const frame of voiceLayersRef.current) {
-        const frameStart = Math.max(0, Math.min(dur, frame.start_ms / 1000));
-        const frameEnd = Math.max(frameStart, Math.min(dur, frame.end_ms / 1000));
-        const x = startX + (frameStart / dur) * totalBarsWidth;
-        const w = Math.max(1, ((frameEnd - frameStart) / dur) * totalBarsWidth);
-
-        for (const layer of layers) {
-          const value = Number(frame[layer.key]) || 0;
-          if (value < layer.min) continue;
-          ctx.fillStyle = layer.color.replace(/[\d.]+\)$/, `${Math.min(0.82, 0.18 + value * 0.64)})`);
-          ctx.fillRect(x, layer.y, w, layerH);
-        }
-      }
-    }
 
     ctx.strokeStyle = "#54b4ff";
     ctx.lineWidth = 1.5;

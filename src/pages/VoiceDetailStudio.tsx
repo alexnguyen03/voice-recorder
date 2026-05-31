@@ -37,7 +37,6 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     hasPreview,
     isProcessing,
     previewError,
-    voiceLayers,
     isFiltersActive,
     processingLabel,
     updateFilters,
@@ -92,7 +91,6 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         ref={waveformRef}
         filePath={selectedFile}
         audioUrl={activeAudioUrl}
-        voiceLayers={voiceLayers}
         onTrim={onTrim}
         editMode={actionMode}
         onPlayStateChange={setIsPlaying}
@@ -101,8 +99,6 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           setTrimEnd(end);
         }}
       />
-
-      <LayerLegend visible={voiceLayers.length > 0} />
 
       <ConfirmBar
         actionMode={actionMode}
@@ -171,26 +167,6 @@ const Header: React.FC<HeaderProps> = ({ fileName, hasPreview, isProcessing, pro
       </span>
     )}
   </div>
-);
-
-const LayerLegend: React.FC<{ visible: boolean }> = ({ visible }) => {
-  if (!visible) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 mt-2 px-1 text-[10px] text-slate-400 dark:text-slate-500">
-      <span className="font-bold text-slate-500 dark:text-slate-400">Layer map</span>
-      <LegendItem className="bg-emerald-500/70" label="Main voice" />
-      <LegendItem className="bg-amber-500/80" label="Xi/Sibilance" />
-      <LegendItem className="bg-sky-500/70" label="Breath" />
-      <LegendItem className="bg-rose-500/80" label="Phi/Plosive" />
-    </div>
-  );
-};
-
-const LegendItem: React.FC<{ className: string; label: string }> = ({ className, label }) => (
-  <span className="inline-flex items-center gap-1">
-    <span className={`w-2 h-2 rounded-sm ${className}`} />
-    {label}
-  </span>
 );
 
 interface ConfirmBarProps {

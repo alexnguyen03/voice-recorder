@@ -78,7 +78,7 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
 
           <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Voice Layers</span>
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Voice Cleanup</span>
               <span className="text-[10px] text-slate-400 dark:text-slate-500">Preview/export only</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -109,6 +109,13 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
                 checked={filters.reduce_plosive}
                 disabled={isProcessing}
                 onChange={(v) => updateFilters({ reduce_plosive: v })}
+              />
+              <Toggle
+                label="Smooth Voice / Cut Off"
+                helper="Reduces details above baseline"
+                checked={filters.smooth_voice_cutoff}
+                disabled={isProcessing}
+                onChange={(v) => updateFilters({ smooth_voice_cutoff: v })}
               />
             </div>
           </div>
