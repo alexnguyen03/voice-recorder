@@ -164,40 +164,18 @@ function App() {
     }
   };
 
-  const handleApplyEffects = async (effects: {
-    enable_noise_suppression: boolean;
-    bass_boost: number;
-    treble_boost: number;
-    volume_boost: number;
-    mic_eq_enhancement: boolean;
-    ml_voice_layers_enabled?: boolean;
-    reduce_sibilance?: boolean;
-    reduce_breath?: boolean;
-    reduce_plosive?: boolean;
-    smooth_voice_cutoff?: boolean;
-  }) => {
+  const handleApplyEffects = async (effects: import("./services/audioService").VoiceEffectOptions) => {
     if (!selectedFile) return;
     setStatusMessage("Exporting with filters...");
     try {
-      const exportPath = await AudioService.applyVoiceEffects(selectedFile, {
-        enable_noise_suppression: effects.enable_noise_suppression,
-        bass_boost: effects.bass_boost,
-        treble_boost: effects.treble_boost,
-        volume_boost: effects.volume_boost,
-        mic_eq_enhancement: effects.mic_eq_enhancement,
-        ml_voice_layers_enabled: effects.ml_voice_layers_enabled,
-        reduce_sibilance: effects.reduce_sibilance,
-        reduce_breath: effects.reduce_breath,
-        reduce_plosive: effects.reduce_plosive,
-        smooth_voice_cutoff: effects.smooth_voice_cutoff,
-      });
-      // Non-destructive: stay on the original file, just add the export to library
+      const exportPath = await AudioService.applyVoiceEffects(selectedFile, effects);
       setStatusMessage(`Exported: ${getFileName(exportPath)}`);
       refreshFiles();
     } catch (err) {
       setStatusMessage(`Export error: ${err}`);
     }
   };
+
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-10 min-h-screen text-slate-800 dark:text-slate-100 flex flex-col transition-colors duration-300">

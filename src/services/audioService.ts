@@ -14,34 +14,58 @@ export interface RecordConfig {
   voice_enhance?: boolean;
 }
 
+/** All voice effect options — mirrors PipelineConfig + VoiceLayerOptions on the Rust side. */
 export interface VoiceEffectOptions {
+  // ── Noise & Wind ────────────────────────────────────────────────────────────
   enable_noise_suppression: boolean;
-  bass_boost: number; // 0.0 - 1.0
-  treble_boost: number; // 0.0 - 1.0
-  volume_boost: number; // 0.0 - 1.0
+  noise_gate_sensitivity: number;    // 0..1 (0=tight, 1=very sensitive)
+  wind_suppression: boolean;
+  wind_intensity: number;            // 0..1
+  de_hiss_enabled: boolean;
+  // ── Breath & Plosive ────────────────────────────────────────────────────────
+  reduce_breath: boolean;
+  breath_sensitivity: number;        // 0..1
+  reduce_plosive: boolean;
+  plosive_sensitivity: number;       // 0..1
+  // ── EQ & Tone ───────────────────────────────────────────────────────────────
   mic_eq_enhancement: boolean;
-  ml_voice_layers_enabled?: boolean;
-  reduce_sibilance?: boolean;
-  reduce_breath?: boolean;
-  reduce_plosive?: boolean;
-  smooth_voice_cutoff?: boolean;
+  bass_boost: number;                // 0..1 → (v-0.5)×30 dB
+  treble_boost: number;              // 0..1 → (v-0.5)×30 dB
+  mid_cut_freq: number;              // Hz  (default 1500)
+  mid_cut_q: number;                 // Q   (default 2.0)
+  mid_cut_gain_db: number;           // ≤0 dB, 0 = bypass
+  // ── Volume ──────────────────────────────────────────────────────────────────
+  volume_boost: number;              // 0..1
+  // ── Vocal Cleanup (ML) ──────────────────────────────────────────────────────
+  ml_voice_layers_enabled: boolean;
+  reduce_sibilance: boolean;
+  smooth_voice_cutoff: boolean;
 }
 
-/** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams */
+/** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams. */
 export interface FilterParams {
   bass_boost: number;
   treble_boost: number;
   volume_boost: number;
   noise_suppression: boolean;
+  noise_gate_sensitivity: number;
   mic_eq_enhancement: boolean;
-  ml_voice_layers_enabled?: boolean;
-  reduce_sibilance?: boolean;
-  reduce_breath?: boolean;
-  reduce_plosive?: boolean;
-  smooth_voice_cutoff?: boolean;
+  ml_voice_layers_enabled: boolean;
+  reduce_sibilance: boolean;
+  reduce_breath: boolean;
+  breath_sensitivity: number;
+  reduce_plosive: boolean;
+  plosive_sensitivity: number;
+  smooth_voice_cutoff: boolean;
+  wind_suppression: boolean;
+  wind_intensity: number;
+  mid_cut_freq: number;
+  mid_cut_q: number;
+  mid_cut_gain_db: number;
+  de_hiss_enabled: boolean;
 }
 
-/** Preview session metadata returned by load_preview_meta */
+/** Preview session metadata returned by load_preview_meta. */
 export interface PreviewMeta {
   version: number;
   source_file: string;
@@ -49,271 +73,119 @@ export interface PreviewMeta {
   filters: FilterParams;
 }
 
-/**
- * Helper to check if the application is running inside a native Tauri WebView environment.
- * If running in a standard web browser, it returns false.
- */
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
-};
+const isTauri = (): boolean =>
+  typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
 
-/**
- * AudioService acts as an Adapter isolating the React UI from Tauri's IPC details.
- * It provides browser fallbacks for previewing styling and basic mock interactions.
- */
+/** Maps VoiceEffectOptions to the flat camelCase args expected by Tauri commands. */
+const toCommandArgs = (filePath: string, o: VoiceEffectOptions) => ({
+  filePath,
+  // Noise & Wind
+  enableNoiseSuppression: o.enable_noise_suppression,
+  noiseGateSensitivity:   o.noise_gate_sensitivity,
+  windSuppression:        o.wind_suppression,
+  windIntensity:          o.wind_intensity,
+  deHissEnabled:          o.de_hiss_enabled,
+  // Breath & Plosive
+  reduceBreath:           o.reduce_breath,
+  breathSensitivity:      o.breath_sensitivity,
+  reducePlosive:          o.reduce_plosive,
+  plosiveSensitivity:     o.plosive_sensitivity,
+  // EQ
+  bassBoost:              o.bass_boost,
+  trebleBoost:            o.treble_boost,
+  midCutFreq:             o.mid_cut_freq,
+  midCutQ:                o.mid_cut_q,
+  midCutGainDb:           o.mid_cut_gain_db,
+  // Volume & Mic
+  volumeBoost:            o.volume_boost,
+  micEqEnhancement:       o.mic_eq_enhancement,
+  // Voice Layer
+  mlVoiceLayersEnabled:   o.ml_voice_layers_enabled,
+  reduceSibilance:        o.reduce_sibilance,
+  smoothVoiceCutoff:      o.smooth_voice_cutoff,
+});
+
 export const AudioService = {
-  /**
-   * Scans and lists available input microphone devices.
-   */
   async listDevices(): Promise<DeviceInfo[]> {
     if (!isTauri()) {
-      console.warn("Running in standard browser. Returning mock microphone devices.");
       return [
-        {
-          id: "mock_mic_1",
-          name: "Mock Built-in Microphone (Browser)",
-          is_default: true,
-        },
-        {
-          id: "mock_mic_2",
-          name: "Mock External USB Microphone (Browser)",
-          is_default: false,
-        },
+        { id: "mock_mic_1", name: "Mock Built-in Microphone (Browser)", is_default: true },
+        { id: "mock_mic_2", name: "Mock External USB Microphone (Browser)", is_default: false },
       ];
     }
-
-    try {
-      return await invoke<DeviceInfo[]>("list_audio_devices");
-    } catch (error) {
-      console.error("Failed to list audio devices:", error);
-      throw new Error(String(error));
-    }
+    try { return await invoke<DeviceInfo[]>("list_audio_devices"); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Starts live audio recording stream.
-   */
   async startRecording(config: RecordConfig): Promise<void> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating start recording.", config);
-      return;
-    }
-
-    try {
-      await invoke("start_audio_recording", { config });
-    } catch (error) {
-      console.error("Failed to start recording:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return;
+    try { await invoke("start_audio_recording", { config }); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Stops live recording stream and saves the raw PCM buffer to disk, returning the saved path.
-   */
   async stopRecording(): Promise<string> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating stop recording.");
-      return "[BROWSER_PREVIEW_MODE] voice_recording_mock.wav";
-    }
-
-    try {
-      return await invoke<string>("stop_audio_recording");
-    } catch (error) {
-      console.error("Failed to stop recording:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return "[BROWSER_PREVIEW_MODE] voice_recording_mock.wav";
+    try { return await invoke<string>("stop_audio_recording"); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Pauses live audio recording stream.
-   */
   async pauseRecording(): Promise<void> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating pause recording.");
-      return;
-    }
-
-    try {
-      await invoke("pause_audio_recording");
-    } catch (error) {
-      console.error("Failed to pause recording:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return;
+    try { await invoke("pause_audio_recording"); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Resumes live audio recording stream.
-   */
   async resumeRecording(): Promise<void> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating resume recording.");
-      return;
-    }
-
-    try {
-      await invoke("resume_audio_recording");
-    } catch (error) {
-      console.error("Failed to resume recording:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return;
+    try { await invoke("resume_audio_recording"); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Discards the active audio recording stream without saving.
-   */
   async discardRecording(): Promise<void> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating discard recording.");
-      return;
-    }
-
-    try {
-      await invoke("discard_audio_recording");
-    } catch (error) {
-      console.error("Failed to discard recording:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return;
+    try { await invoke("discard_audio_recording"); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Trims the audio file between starting and ending millisecond ranges.
-   */
   async trimAudio(filePath: string, startMs: number, endMs: number): Promise<string> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating audio trim.");
-      return filePath.replace(".wav", "_trimmed.wav");
-    }
-
-    try {
-      return await invoke<string>("trim_audio", { filePath, startMs, endMs });
-    } catch (error) {
-      console.error("Failed to trim audio:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return filePath.replace(".wav", "_trimmed.wav");
+    try { return await invoke<string>("trim_audio", { filePath, startMs, endMs }); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Removes the segment between startMs and endMs, keeping the audio before and after.
-   */
   async cutAudioSegment(filePath: string, startMs: number, endMs: number): Promise<string> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating audio cut.");
-      return filePath.replace(".wav", "_cut.wav");
-    }
-
-    try {
-      return await invoke<string>("cut_audio_segment", { filePath, startMs, endMs });
-    } catch (error) {
-      console.error("Failed to cut audio segment:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return filePath.replace(".wav", "_cut.wav");
+    try { return await invoke<string>("cut_audio_segment", { filePath, startMs, endMs }); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Applies DSP filters (noise cancellation and EQ boosts) to the audio file.
-   */
   async applyVoiceEffects(filePath: string, options: VoiceEffectOptions): Promise<string> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Simulating DSP effects application.");
-      return filePath.replace(".wav", "_enhanced.wav");
-    }
-
-    try {
-      return await invoke<string>("apply_voice_effects", {
-        filePath,
-        enableNoiseSuppression: options.enable_noise_suppression,
-        bassBoost: options.bass_boost,
-        trebleBoost: options.treble_boost,
-        volumeBoost: options.volume_boost,
-        micEqEnhancement: options.mic_eq_enhancement,
-        mlVoiceLayersEnabled: options.ml_voice_layers_enabled ?? false,
-        reduceSibilance: options.reduce_sibilance ?? false,
-        reduceBreath: options.reduce_breath ?? false,
-        reducePlosive: options.reduce_plosive ?? false,
-        smoothVoiceCutoff: options.smooth_voice_cutoff ?? false,
-      });
-    } catch (error) {
-      console.error("Failed to apply voice effects:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return filePath.replace(".wav", "_enhanced.wav");
+    try { return await invoke<string>("apply_voice_effects", toCommandArgs(filePath, options)); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Scans and returns all recorded WAV file absolute paths inside User's Documents/VoiceRecorder.
-   */
   async listRecordedFiles(): Promise<string[]> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Returning mock recorded files.");
-      return [
-        "[BROWSER_PREVIEW_MODE] mock_voice_recording_1.wav",
-        "[BROWSER_PREVIEW_MODE] mock_voice_recording_2.wav",
-      ];
-    }
-    try {
-      return await invoke<string[]>("list_recorded_files");
-    } catch (error) {
-      console.error("Failed to list recorded files:", error);
-      throw new Error(String(error));
-    }
+    if (!isTauri()) return ["[BROWSER] mock_voice_recording_1.wav", "[BROWSER] mock_voice_recording_2.wav"];
+    try { return await invoke<string[]>("list_recorded_files"); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Processes the source WAV through the Rust DSP engine, writes a preview WAV + meta sidecar,
-   * and returns the absolute path to the preview WAV (use convertFileSrc() on the frontend).
-   * This is the ONLY engine used — what the user hears IS what gets exported.
-   */
-  async createPreview(
-    filePath: string,
-    options: VoiceEffectOptions,
-  ): Promise<string> {
-    if (!isTauri()) {
-      console.warn("Running in standard browser. Skipping preview creation.");
-      return filePath; // browser fallback: play original
-    }
-    try {
-      return await invoke<string>("create_preview", {
-        filePath,
-        enableNoiseSuppression: options.enable_noise_suppression,
-        bassBoost:              options.bass_boost,
-        trebleBoost:            options.treble_boost,
-        volumeBoost:            options.volume_boost,
-        micEqEnhancement:       options.mic_eq_enhancement,
-        mlVoiceLayersEnabled:   options.ml_voice_layers_enabled ?? false,
-        reduceSibilance:        options.reduce_sibilance ?? false,
-        reduceBreath:           options.reduce_breath ?? false,
-        reducePlosive:          options.reduce_plosive ?? false,
-        smoothVoiceCutoff:      options.smooth_voice_cutoff ?? false,
-      });
-    } catch (error) {
-      console.error("Failed to create preview:", error);
-      throw new Error(String(error));
-    }
+  async createPreview(filePath: string, options: VoiceEffectOptions): Promise<string> {
+    if (!isTauri()) return filePath;
+    try { return await invoke<string>("create_preview", toCommandArgs(filePath, options)); }
+    catch (e) { throw new Error(String(e)); }
   },
 
-  /**
-   * Loads the saved preview session for a source file, if one exists.
-   * Returns null when no preview has been created yet.
-   */
   async loadPreviewMeta(filePath: string): Promise<PreviewMeta | null> {
     if (!isTauri()) return null;
-    try {
-      return await invoke<PreviewMeta | null>("load_preview_meta", { filePath });
-    } catch (error) {
-      console.error("Failed to load preview meta:", error);
-      return null;
-    }
+    try { return await invoke<PreviewMeta | null>("load_preview_meta", { filePath }); }
+    catch (e) { return null; }
   },
 
-  /**
-   * Deletes the preview WAV and meta sidecar for a source file.
-   * Safe to call even when no preview exists.
-   */
   async clearPreview(filePath: string): Promise<void> {
     if (!isTauri()) return;
-    try {
-      await invoke("clear_preview", { filePath });
-    } catch (error) {
-      console.error("Failed to clear preview:", error);
-    }
+    try { await invoke("clear_preview", { filePath }); }
+    catch (e) { /* safe to swallow */ }
   },
 };

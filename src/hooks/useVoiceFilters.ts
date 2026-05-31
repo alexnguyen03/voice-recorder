@@ -1,23 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { AudioService, VoiceEffectOptions } from "../services/audioService";
+import { AudioService, VoiceEffectOptions, FilterParams } from "../services/audioService";
 
 const PREVIEW_DEBOUNCE_MS = 500;
 const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
 
+/** Full filter state — every field Required so callers never have to handle undefined. */
 export type VoiceFilterState = Required<VoiceEffectOptions>;
 
-const DEFAULT_FILTERS: VoiceFilterState = {
-  enable_noise_suppression: false,
-  bass_boost: 0.5,
-  treble_boost: 0.5,
-  volume_boost: 0.5,
-  mic_eq_enhancement: false,
-  ml_voice_layers_enabled: false,
-  reduce_sibilance: false,
-  reduce_breath: false,
-  reduce_plosive: false,
-  smooth_voice_cutoff: false,
+export const DEFAULT_FILTERS: VoiceFilterState = {
+  // Noise & Wind
+  enable_noise_suppression:  false,
+  noise_gate_sensitivity:    0.5,
+  wind_suppression:          false,
+  wind_intensity:            0.5,
+  de_hiss_enabled:           false,
+  // Breath & Plosive
+  reduce_breath:             false,
+  breath_sensitivity:        0.5,
+  reduce_plosive:            false,
+  plosive_sensitivity:       0.5,
+  // EQ & Tone
+  mic_eq_enhancement:        false,
+  bass_boost:                0.5,
+  treble_boost:              0.5,
+  mid_cut_freq:              1500,
+  mid_cut_q:                 2.0,
+  mid_cut_gain_db:           0,
+  // Volume
+  volume_boost:              0.5,
+  // Vocal Cleanup (ML)
+  ml_voice_layers_enabled:   false,
+  reduce_sibilance:          false,
+  smooth_voice_cutoff:       false,
 };
 
 export const toAudioUrl = (filePath: string): string => {
@@ -26,18 +41,49 @@ export const toAudioUrl = (filePath: string): string => {
   return convertFileSrc(filePath);
 };
 
-const isDefaultFilters = (filters: VoiceFilterState): boolean => (
-  filters.bass_boost === 0.5 &&
-  filters.treble_boost === 0.5 &&
-  filters.volume_boost === 0.5 &&
-  !filters.enable_noise_suppression &&
-  !filters.mic_eq_enhancement &&
-  !filters.ml_voice_layers_enabled &&
-  !filters.reduce_sibilance &&
-  !filters.reduce_breath &&
-  !filters.reduce_plosive &&
-  !filters.smooth_voice_cutoff
-);
+const isDefaultFilters = (f: VoiceFilterState): boolean =>
+  !f.enable_noise_suppression &&
+  f.noise_gate_sensitivity    === 0.5 &&
+  !f.wind_suppression &&
+  f.wind_intensity             === 0.5 &&
+  !f.de_hiss_enabled &&
+  !f.reduce_breath &&
+  f.breath_sensitivity         === 0.5 &&
+  !f.reduce_plosive &&
+  f.plosive_sensitivity        === 0.5 &&
+  !f.mic_eq_enhancement &&
+  f.bass_boost                 === 0.5 &&
+  f.treble_boost               === 0.5 &&
+  f.mid_cut_freq               === 1500 &&
+  f.mid_cut_q                  === 2.0 &&
+  f.mid_cut_gain_db            === 0 &&
+  f.volume_boost               === 0.5 &&
+  !f.ml_voice_layers_enabled &&
+  !f.reduce_sibilance &&
+  !f.smooth_voice_cutoff;
+
+/** Restore saved FilterParams from meta sidecar into VoiceFilterState. */
+const fromFilterParams = (fp: FilterParams): VoiceFilterState => ({
+  enable_noise_suppression: fp.noise_suppression,
+  noise_gate_sensitivity:   fp.noise_gate_sensitivity ?? 0.5,
+  wind_suppression:         fp.wind_suppression       ?? false,
+  wind_intensity:           fp.wind_intensity         ?? 0.5,
+  de_hiss_enabled:          fp.de_hiss_enabled        ?? false,
+  reduce_breath:            fp.reduce_breath          ?? false,
+  breath_sensitivity:       fp.breath_sensitivity     ?? 0.5,
+  reduce_plosive:           fp.reduce_plosive         ?? false,
+  plosive_sensitivity:      fp.plosive_sensitivity    ?? 0.5,
+  mic_eq_enhancement:       fp.mic_eq_enhancement,
+  bass_boost:               fp.bass_boost,
+  treble_boost:             fp.treble_boost,
+  mid_cut_freq:             fp.mid_cut_freq           ?? 1500,
+  mid_cut_q:                fp.mid_cut_q              ?? 2.0,
+  mid_cut_gain_db:          fp.mid_cut_gain_db        ?? 0,
+  volume_boost:             fp.volume_boost,
+  ml_voice_layers_enabled:  fp.ml_voice_layers_enabled ?? false,
+  reduce_sibilance:         fp.reduce_sibilance        ?? false,
+  smooth_voice_cutoff:      fp.smooth_voice_cutoff     ?? false,
+});
 
 interface UseVoiceFiltersArgs {
   selectedFile: string;
@@ -45,9 +91,9 @@ interface UseVoiceFiltersArgs {
 }
 
 export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFiltersArgs) => {
-  const [filters, setFilters] = useState<VoiceFilterState>(DEFAULT_FILTERS);
+  const [filters, setFilters]           = useState<VoiceFilterState>(DEFAULT_FILTERS);
   const [activeAudioUrl, setActiveAudioUrl] = useState(() => toAudioUrl(selectedFile));
-  const [hasPreview, setHasPreview] = useState(false);
+  const [hasPreview, setHasPreview]     = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,7 +126,7 @@ export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFilter
   }, [selectedFile]);
 
   const updateFilters = useCallback((patch: Partial<VoiceFilterState>) => {
-    setFilters((current) => {
+    setFilters(current => {
       const next = { ...current, ...patch };
       schedulePreview(next);
       return next;
@@ -100,45 +146,31 @@ export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFilter
     await onApplyEffects(filters);
   }, [filters, onApplyEffects]);
 
+  // Restore session when file changes
   useEffect(() => {
     let active = true;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
     setFilters(DEFAULT_FILTERS);
     setActiveAudioUrl(toAudioUrl(selectedFile));
     setHasPreview(false);
     setIsProcessing(false);
     setPreviewError(null);
 
-    AudioService.loadPreviewMeta(selectedFile).then((meta) => {
+    AudioService.loadPreviewMeta(selectedFile).then(meta => {
       if (!active || !meta) return;
-      const restored: VoiceFilterState = {
-        enable_noise_suppression: meta.filters.noise_suppression,
-        bass_boost: meta.filters.bass_boost,
-        treble_boost: meta.filters.treble_boost,
-        volume_boost: meta.filters.volume_boost,
-        mic_eq_enhancement: meta.filters.mic_eq_enhancement,
-        ml_voice_layers_enabled: meta.filters.ml_voice_layers_enabled ?? false,
-        reduce_sibilance: meta.filters.reduce_sibilance ?? false,
-        reduce_breath: meta.filters.reduce_breath ?? false,
-        reduce_plosive: meta.filters.reduce_plosive ?? false,
-        smooth_voice_cutoff: meta.filters.smooth_voice_cutoff ?? false,
-      };
-      setFilters(restored);
+      setFilters(fromFilterParams(meta.filters));
       setActiveAudioUrl(toAudioUrl(meta.preview_file));
       setHasPreview(true);
     });
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [selectedFile]);
 
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  const processingLabel = filters.ml_voice_layers_enabled
+    ? "DOWNLOADING MODEL / RENDERING"
+    : "RENDERING";
 
   return {
     filters,
@@ -147,7 +179,7 @@ export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFilter
     isProcessing,
     previewError,
     isFiltersActive: !isDefaultFilters(filters),
-    processingLabel: filters.ml_voice_layers_enabled ? "DOWNLOADING MODEL / RENDERING" : "RENDERING",
+    processingLabel,
     updateFilters,
     resetFilters,
     exportWithFilters,

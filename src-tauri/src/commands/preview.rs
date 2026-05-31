@@ -1,8 +1,8 @@
 use tauri::{AppHandle, Manager};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::infra::{LocalStorage, DspEngine, VoiceLayerEngine, VoiceLayerOptions};
-use crate::core::traits::{AudioStorage, AudioProcessor};
+use crate::infra::{LocalStorage, DspPipelineBuilder, PipelineConfig, VoiceLayerEngine, VoiceLayerOptions};
+use crate::core::traits::AudioStorage;
 
 /// Filter parameter set — serialized to/from the .meta.json sidecar file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,6 +11,7 @@ pub struct FilterParams {
     pub treble_boost: f32,
     pub volume_boost: f32,
     pub noise_suppression: bool,
+    pub noise_gate_sensitivity: f32,
     pub mic_eq_enhancement: bool,
     #[serde(default)]
     pub ml_voice_layers_enabled: bool,
@@ -19,26 +20,38 @@ pub struct FilterParams {
     #[serde(default)]
     pub reduce_breath: bool,
     #[serde(default)]
+    pub breath_sensitivity: f32,
+    #[serde(default)]
     pub reduce_plosive: bool,
     #[serde(default)]
+    pub plosive_sensitivity: f32,
+    #[serde(default)]
     pub smooth_voice_cutoff: bool,
+    #[serde(default)]
+    pub wind_suppression: bool,
+    #[serde(default)]
+    pub wind_intensity: f32,
+    #[serde(default)]
+    pub mid_cut_freq: f32,
+    #[serde(default)]
+    pub mid_cut_q: f32,
+    #[serde(default)]
+    pub mid_cut_gain_db: f32,
+    #[serde(default)]
+    pub de_hiss_enabled: bool,
 }
 
 /// Full preview sidecar metadata — written alongside the processed preview WAV.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreviewMeta {
     pub version: u32,
-    /// Absolute path to the original (unmodified) source file.
     pub source_file: String,
-    /// Absolute path to the Rust-processed preview WAV file.
     pub preview_file: String,
     pub filters: FilterParams,
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Returns the directory where preview files are cached:
-///   Documents/VoiceRecorder/.previews/
 fn preview_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let doc_dir = app
         .path()
@@ -50,25 +63,18 @@ fn preview_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Derives `(preview.wav path, meta.json path)` for a given source file.
-/// Two source files with the same stem but different directories would collide,
-/// so we embed a hash of the parent directory to guarantee uniqueness.
 fn preview_paths(app: &AppHandle, file_path: &str) -> Result<(PathBuf, PathBuf), String> {
     let dir = preview_dir(app)?;
     let src = std::path::Path::new(file_path);
-
     let stem = src
         .file_stem()
         .ok_or_else(|| format!("Cannot derive file stem from: {}", file_path))?
         .to_string_lossy()
         .to_string();
-
-    // Simple parent-hash to prevent stem collisions across directories
     let parent_hash: u32 = src
         .parent()
         .map(|p| p.to_string_lossy().chars().fold(0u32, |acc, c| acc.wrapping_add(c as u32)))
         .unwrap_or(0);
-
     let key = format!("{}_{:08x}", stem, parent_hash);
     Ok((
         dir.join(format!("{}.preview.wav", key)),
@@ -78,74 +84,94 @@ fn preview_paths(app: &AppHandle, file_path: &str) -> Result<(PathBuf, PathBuf),
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-/// Processes the source WAV through the Rust DSP engine and writes two files:
-///   • `<stem>.preview.wav`  — the processed audio (becomes the player source)
+/// Processes the source WAV through the full 10-stage Rust DSP pipeline and writes:
+///   • `<stem>.preview.wav`  — processed audio (becomes the player source)
 ///   • `<stem>.meta.json`    — filter params so the session can be restored later
 ///
-/// Returns the **absolute path** to the preview WAV. The frontend converts this
-/// with `convertFileSrc()` to get the asset:// URL for the audio player.
+/// Returns the absolute path to the preview WAV.
 #[tauri::command]
 pub fn create_preview(
     app: AppHandle,
     file_path: String,
+    // Noise & Wind
     enable_noise_suppression: bool,
+    noise_gate_sensitivity: f32,
+    wind_suppression: bool,
+    wind_intensity: f32,
+    de_hiss_enabled: bool,
+    // Breath & Plosive
+    reduce_breath: bool,
+    breath_sensitivity: f32,
+    reduce_plosive: bool,
+    plosive_sensitivity: f32,
+    // EQ
     bass_boost: f32,
     treble_boost: f32,
+    mid_cut_freq: f32,
+    mid_cut_q: f32,
+    mid_cut_gain_db: f32,
+    // Volume & Mic
     volume_boost: f32,
     mic_eq_enhancement: bool,
+    // Voice Layer (ML)
     ml_voice_layers_enabled: bool,
     reduce_sibilance: bool,
-    reduce_breath: bool,
-    reduce_plosive: bool,
     smooth_voice_cutoff: bool,
 ) -> Result<String, String> {
     let storage = LocalStorage::new();
-    let dsp     = DspEngine::new();
     let voice_layers = VoiceLayerEngine::new();
 
-    // Load original PCM
+    // 1. Load original PCM
     let mut buffer = storage.load_file(&file_path).map_err(|e| e.to_string())?;
+    let sample_rate = buffer.sample_rate as f32;
+    let channels    = buffer.channels;
 
+    // 2. Voice layer processing (ML vocal focus, sibilance, smooth cutoff)
     voice_layers.process(
         &app,
         &mut buffer,
         VoiceLayerOptions {
             ml_voice_layers_enabled,
             reduce_sibilance,
-            reduce_breath,
-            reduce_plosive,
+            reduce_breath: false,   // handled by BreathSuppressor in pipeline
+            reduce_plosive: false,  // handled by PlosiveReducer in pipeline
             smooth_voice_cutoff,
         },
     )?;
 
-    // Apply EQ chain (Rust is the sole engine — what you hear = what you export)
-    buffer.samples = dsp
-        .enhance_voice(
-            &buffer.samples,
-            buffer.sample_rate as f32,
-            bass_boost,
-            treble_boost,
-            volume_boost,
-            mic_eq_enhancement,
-        )
-        .map_err(|e| e.to_string())?;
+    // 3. Build and run the full 10-stage DSP pipeline
+    let config = PipelineConfig {
+        sample_rate,
+        channels,
+        wind_suppression,
+        wind_intensity,
+        noise_suppression: enable_noise_suppression,
+        noise_gate_sensitivity,
+        de_hiss_enabled,
+        reduce_breath,
+        breath_sensitivity,
+        reduce_plosive,
+        plosive_sensitivity,
+        mic_eq_enhancement,
+        bass_boost,
+        treble_boost,
+        mid_cut_freq,
+        mid_cut_q,
+        mid_cut_gain_db,
+        volume_boost,
+    };
 
-    // Noise gate applied after EQ (same order as the Web Audio graph)
-    if enable_noise_suppression {
-        buffer.samples = dsp.suppress_noise(&buffer.samples).map_err(|e| e.to_string())?;
-    }
+    let mut pipeline = DspPipelineBuilder::new(config).build_standard();
+    buffer.samples = pipeline.process(&buffer.samples);
 
+    // 4. Write processed WAV
     let (preview_path, meta_path) = preview_paths(&app, &file_path)?;
     let preview_str = preview_path.to_string_lossy().to_string();
+    storage.save_file(&buffer, &preview_str).map_err(|e| e.to_string())?;
 
-    // Write processed WAV
-    storage
-        .save_file(&buffer, &preview_str)
-        .map_err(|e| e.to_string())?;
-
-    // Write meta sidecar
+    // 5. Write meta sidecar (version bumped to 4 for new schema)
     let meta = PreviewMeta {
-        version: 3,
+        version: 4,
         source_file: file_path,
         preview_file: preview_str.clone(),
         filters: FilterParams {
@@ -153,12 +179,21 @@ pub fn create_preview(
             treble_boost,
             volume_boost,
             noise_suppression: enable_noise_suppression,
+            noise_gate_sensitivity,
             mic_eq_enhancement,
             ml_voice_layers_enabled,
             reduce_sibilance,
             reduce_breath,
+            breath_sensitivity,
             reduce_plosive,
+            plosive_sensitivity,
             smooth_voice_cutoff,
+            wind_suppression,
+            wind_intensity,
+            mid_cut_freq,
+            mid_cut_q,
+            mid_cut_gain_db,
+            de_hiss_enabled,
         },
     };
     let json = serde_json::to_string_pretty(&meta)
@@ -169,39 +204,24 @@ pub fn create_preview(
     Ok(preview_str)
 }
 
-/// Loads the preview meta for a source file if it exists.
-/// Returns `null`/`None` if no preview has been created yet, or if the sidecar
-/// is stale (source path doesn't match).
 #[tauri::command]
 pub fn load_preview_meta(
     app: AppHandle,
     file_path: String,
 ) -> Result<Option<PreviewMeta>, String> {
     let (preview_path, meta_path) = preview_paths(&app, &file_path)?;
-
-    if !preview_path.exists() || !meta_path.exists() {
-        return Ok(None);
-    }
-
+    if !preview_path.exists() || !meta_path.exists() { return Ok(None); }
     let json = std::fs::read_to_string(&meta_path)
         .map_err(|e| format!("Failed to read preview meta: {}", e))?;
     let meta: PreviewMeta = serde_json::from_str(&json)
         .map_err(|e| format!("Failed to parse preview meta: {}", e))?;
-
-    // Stale check: source file must still match
-    if meta.source_file != file_path {
-        return Ok(None);
-    }
-
+    if meta.source_file != file_path { return Ok(None); }
     Ok(Some(meta))
 }
 
-/// Deletes the preview WAV and its meta sidecar for the given source file.
-/// Safe to call even if no preview exists.
 #[tauri::command]
 pub fn clear_preview(app: AppHandle, file_path: String) -> Result<(), String> {
     let (preview_path, meta_path) = preview_paths(&app, &file_path)?;
-
     if preview_path.exists() {
         std::fs::remove_file(&preview_path)
             .map_err(|e| format!("Failed to delete preview WAV: {}", e))?;
