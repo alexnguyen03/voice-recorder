@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Mic, Speaker, Play, Square, Wand2, Activity, Settings2 } from "lucide-react";
+import { Mic, Speaker, Play, Square, Wand2, Activity, Settings2, VolumeX, Volume1, Volume2 } from "lucide-react";
 
 interface DeviceList {
   inputs: string[];
@@ -190,8 +190,12 @@ export const LiveMicStudio: React.FC = () => {
               <div className="px-1 pb-1">
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Gate Sensitivity</label>
-                  <span className="text-[10px] font-bold text-violet-500">
-                    {gateSensitivity < 0.33 ? '🔇 Low (loud voice only)' : gateSensitivity < 0.66 ? '🎙️ Medium' : '🔊 High (quiet voice OK)'}
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-violet-500">
+                    {gateSensitivity < 0.33
+                      ? <><VolumeX className="w-3 h-3" /> Low (loud voice only)</>
+                      : gateSensitivity < 0.66
+                      ? <><Volume1 className="w-3 h-3" /> Medium</>
+                      : <><Volume2 className="w-3 h-3" /> High (quiet voice OK)</>}
                   </span>
                 </div>
                 <input

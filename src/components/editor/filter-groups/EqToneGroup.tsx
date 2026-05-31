@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { SlidersHorizontal } from "lucide-react";
 import { FilterGroupHeader } from "./FilterGroupHeader";
 import { Toggle, Slider } from "./ToggleWithSlider";
 import { VoiceFilterState } from "../../../hooks/useVoiceFilters";
@@ -38,7 +39,7 @@ export const EqToneGroup: React.FC<Props> = ({ filters, disabled, updateFilters 
   return (
     <div className="border-b border-white/5">
       <FilterGroupHeader
-        icon="🎛"
+        icon={<SlidersHorizontal className="w-3.5 h-3.5" />}
         label="EQ & Tone"
         open={open}
         onToggle={() => setOpen(o => !o)}

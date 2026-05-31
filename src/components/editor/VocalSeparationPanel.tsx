@@ -186,14 +186,14 @@ export const VocalSeparationPanel: React.FC<VocalSeparationPanelProps> = ({
                 {vocalsAudioUrl && (
                   <StemPlayer
                     url={vocalsAudioUrl}
-                    label="🎤 Vocals"
+                    label="Vocals"
                     accent="border-violet-500/40"
                   />
                 )}
                 {accompanimentAudioUrl && (
                   <StemPlayer
                     url={accompanimentAudioUrl}
-                    label="🎵 Background"
+                    label="Background"
                     accent="border-slate-500/40"
                   />
                 )}

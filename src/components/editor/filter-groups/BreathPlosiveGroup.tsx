@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Zap } from "lucide-react";
 import { FilterGroupHeader } from "./FilterGroupHeader";
 import { ToggleWithSlider } from "./ToggleWithSlider";
 import { VoiceFilterState } from "../../../hooks/useVoiceFilters";
@@ -26,7 +27,7 @@ export const BreathPlosiveGroup: React.FC<Props> = ({ filters, disabled, updateF
   return (
     <div className="border-b border-white/5">
       <FilterGroupHeader
-        icon="💨"
+        icon={<Zap className="w-3.5 h-3.5" />}
         label="Breath & Plosive"
         open={open}
         onToggle={() => setOpen(o => !o)}

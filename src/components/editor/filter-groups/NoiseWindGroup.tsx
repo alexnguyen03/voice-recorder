@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Wind } from "lucide-react";
 import { FilterGroupHeader } from "./FilterGroupHeader";
 import { ToggleWithSlider, Toggle } from "./ToggleWithSlider";
 import { VoiceFilterState } from "../../../hooks/useVoiceFilters";
@@ -28,7 +29,7 @@ export const NoiseWindGroup: React.FC<Props> = ({ filters, disabled, updateFilte
   return (
     <div className="border-b border-white/5">
       <FilterGroupHeader
-        icon="🌬"
+        icon={<Wind className="w-3.5 h-3.5" />}
         label="Noise & Wind"
         open={open}
         onToggle={() => setOpen(o => !o)}

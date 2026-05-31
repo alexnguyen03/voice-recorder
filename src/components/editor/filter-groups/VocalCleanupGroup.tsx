@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Mic } from "lucide-react";
 import { FilterGroupHeader } from "./FilterGroupHeader";
 import { Toggle } from "./ToggleWithSlider";
 import { VoiceFilterState } from "../../../hooks/useVoiceFilters";
@@ -25,7 +26,7 @@ export const VocalCleanupGroup: React.FC<Props> = ({ filters, disabled, updateFi
   return (
     <div className="border-b border-white/5">
       <FilterGroupHeader
-        icon="🎤"
+        icon={<Mic className="w-3.5 h-3.5" />}
         label="Vocal Cleanup"
         open={open}
         onToggle={() => setOpen(o => !o)}

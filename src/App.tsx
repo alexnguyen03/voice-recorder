@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Mic, FolderOpen, Headphones, Settings } from "lucide-react";
 import { useAudioRecorder } from "./hooks/useAudioRecorder";
 import { AudioService } from "./services/audioService";
 import { RecordingPage } from "./pages/RecordingPage";
@@ -201,7 +202,7 @@ function App() {
               : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
-          🎙️ Record
+          <Mic className="w-3.5 h-3.5" /> Record
         </button>
         <button
           onClick={() => {
@@ -214,7 +215,7 @@ function App() {
               : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
-          📁 Saved Recordings ({filesList.length})
+          <FolderOpen className="w-3.5 h-3.5" /> Saved ({filesList.length})
         </button>
         <button
           onClick={() => {
@@ -226,7 +227,7 @@ function App() {
               : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
-          🎧 Live Mic
+          <Headphones className="w-3.5 h-3.5" /> Live Mic
         </button>
         <button
           onClick={() => {
@@ -238,7 +239,7 @@ function App() {
               : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           }`}
         >
-          ⚙️ Settings
+          <Settings className="w-3.5 h-3.5" /> Settings
         </button>
       </div>
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { AlertTriangle, Sun, Moon, Monitor } from "lucide-react";
 
 type ThemeType = "light" | "dark" | "system";
 
@@ -43,8 +44,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           ))}
         </select>
         {isRecording && (
-          <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-2">
-            ⚠️ Microphone cannot be changed while recording is active.
+          <p className="flex items-center gap-1 text-[10px] text-amber-500 dark:text-amber-400 mt-2">
+            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+            Microphone cannot be changed while recording is active.
           </p>
         )}
       </div>
@@ -65,9 +67,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
-              {t === "light" && "☀️"}
-              {t === "dark" && "🌙"}
-              {t === "system" && "💻"}
+              {t === "light"  && <Sun     className="w-3.5 h-3.5" />}
+              {t === "dark"   && <Moon    className="w-3.5 h-3.5" />}
+              {t === "system" && <Monitor className="w-3.5 h-3.5" />}
               <span>{t}</span>
             </button>
           ))}
