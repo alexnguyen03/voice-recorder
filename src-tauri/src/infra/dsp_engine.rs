@@ -173,6 +173,23 @@ impl DspEngine {
     }
 }
 
+fn soft_compress(sample: f32) -> f32 {
+    let threshold = 0.35_f32;
+    let ratio = 3.0_f32;
+    let abs = sample.abs();
+
+    if abs <= threshold {
+        return sample;
+    }
+
+    let compressed_abs = threshold + (abs - threshold) / ratio;
+    compressed_abs.copysign(sample)
+}
+
+fn soft_limit(sample: f32) -> f32 {
+    sample.tanh().clamp(-0.92, 0.92)
+}
+
 impl AudioProcessor for DspEngine {
     fn suppress_noise(&self, input: &[f32]) -> Result<Vec<f32>, AppError> {
         // Noise gate — thresholds MUST match the AudioWorklet defaults in
@@ -297,12 +314,13 @@ impl AudioProcessor for DspEngine {
             processed = bass_filter.process(processed);
             // Boost crisp vocal clarity
             processed = treble_filter.process(processed);
+            // Smooth basic-mic level swings before final gain.
+            processed = soft_compress(processed);
             // Apply volume boost
             processed *= linear_gain;
             
-            // Hard clipping to prevent integer overflow wrap-around in PCM output
-            if processed > 1.0 { processed = 1.0; }
-            if processed < -1.0 { processed = -1.0; }
+            // Soft limiting prevents integer overflow without harsh clipping.
+            processed = soft_limit(processed);
             
             output.push(processed);
         }
@@ -358,6 +376,8 @@ impl LiveDspSession {
 
     pub fn update_filters(&mut self, sample_rate: f32, bass_boost: f32, treble_boost: f32, volume_boost: f32, mic_eq: bool, noise_sup: bool, gate_sensitivity: f32) {
         // MUST match enhance_voice() and WaveformEditor Web Audio: (value - 0.5) * 30 → ±15 dB
+        self.sample_rate = sample_rate;
+
         let bass_gain = (bass_boost - 0.5) * 30.0;
         let treble_gain = (treble_boost - 0.5) * 30.0;
         self.linear_gain = if volume_boost >= 0.5 {
@@ -472,10 +492,11 @@ impl LiveDspSession {
             // ── Step 3: EQ shaping and volume ──
             processed = self.bass_filter.process(processed);
             processed = self.treble_filter.process(processed);
+            processed = soft_compress(processed);
             processed *= self.linear_gain;
 
-            // Hard clip to prevent PCM overflow
-            processed = processed.clamp(-1.0, 1.0);
+            // Soft limiting prevents PCM overflow without harsh clipping.
+            processed = soft_limit(processed);
 
             output[i] = processed;
         }

@@ -13,6 +13,12 @@ pub struct RecordConfig {
     pub sample_rate: u32,
     pub channels: u16,
     pub bit_depth: u16,
+    #[serde(default = "default_voice_enhance")]
+    pub voice_enhance: bool,
+}
+
+fn default_voice_enhance() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize)]

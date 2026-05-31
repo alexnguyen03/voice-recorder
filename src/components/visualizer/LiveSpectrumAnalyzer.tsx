@@ -5,6 +5,8 @@ interface LiveSpectrumAnalyzerProps {
   isRecording: boolean;
   /** Whether recording is paused — spectrum freezes but stays visible */
   isPaused?: boolean;
+  /** Mirrors the recording pipeline's voice cleanup preset for the visual feed */
+  voiceEnhance?: boolean;
 }
 
 /**
@@ -23,6 +25,7 @@ interface LiveSpectrumAnalyzerProps {
 export const LiveSpectrumAnalyzer: React.FC<LiveSpectrumAnalyzerProps> = ({
   isRecording,
   isPaused = false,
+  voiceEnhance = true,
 }) => {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const animationRef   = useRef<number | null>(null);
@@ -141,7 +144,29 @@ export const LiveSpectrumAnalyzer: React.FC<LiveSpectrumAnalyzerProps> = ({
         analyser.smoothingTimeConstant  = 0.82;
         analyserRef.current = analyser;
 
-        source.connect(analyser);
+        if (voiceEnhance) {
+          const highPass = ctx.createBiquadFilter();
+          highPass.type = "highpass";
+          highPass.frequency.value = 85;
+
+          const notch50 = ctx.createBiquadFilter();
+          notch50.type = "notch";
+          notch50.frequency.value = 50;
+          notch50.Q.value = 10;
+
+          const notch60 = ctx.createBiquadFilter();
+          notch60.type = "notch";
+          notch60.frequency.value = 60;
+          notch60.Q.value = 10;
+
+          const lowPass = ctx.createBiquadFilter();
+          lowPass.type = "lowpass";
+          lowPass.frequency.value = 9000;
+
+          source.connect(highPass).connect(notch50).connect(notch60).connect(lowPass).connect(analyser);
+        } else {
+          source.connect(analyser);
+        }
         // Do NOT connect to destination — we only want to analyse, not play back
 
         const canvas = canvasRef.current;
@@ -182,7 +207,7 @@ export const LiveSpectrumAnalyzer: React.FC<LiveSpectrumAnalyzerProps> = ({
       audioCtxRef.current = null;
       analyserRef.current = null;
     };
-  }, [isRecording]);
+  }, [isRecording, voiceEnhance]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (

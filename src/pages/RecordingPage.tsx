@@ -13,6 +13,8 @@ interface RecordingPageProps {
   resumeRecording: () => Promise<void>;
   pauseRecording: () => Promise<void>;
   statusMessage: string;
+  voiceEnhance: boolean;
+  setVoiceEnhance: (enabled: boolean) => void;
 }
 
 export const RecordingPage: React.FC<RecordingPageProps> = ({
@@ -26,6 +28,8 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
   resumeRecording,
   pauseRecording,
   statusMessage,
+  voiceEnhance,
+  setVoiceEnhance,
 }) => {
   return (
     <section className="flex flex-col items-center bg-slate-100 dark:bg-slate-800 rounded-sm max-w-lg mx-auto w-full transition-colors duration-300 animate-fade-in">
@@ -36,8 +40,24 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
 
       {/* Live Frequency Spectrum — slides in during recording */}
       <div className="w-full mb-4">
-        <LiveSpectrumAnalyzer isRecording={isRecording} isPaused={isPaused} />
+        <LiveSpectrumAnalyzer isRecording={isRecording} isPaused={isPaused} voiceEnhance={voiceEnhance} />
       </div>
+
+      <label className={`mb-3 flex items-center gap-3 px-3 py-2 rounded-sm bg-white/70 dark:bg-slate-900/60 text-left transition-opacity ${
+        isRecording || isPaused ? "opacity-55 cursor-not-allowed" : "cursor-pointer"
+      }`}>
+        <input
+          type="checkbox"
+          checked={voiceEnhance}
+          disabled={isRecording || isPaused}
+          onChange={(e) => setVoiceEnhance(e.target.checked)}
+          className="w-4 h-4 accent-blue-500 disabled:cursor-not-allowed"
+        />
+        <span className="flex flex-col">
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Voice Enhance</span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500">Noise gate, mic cleanup, compressor</span>
+        </span>
+      </label>
 
       <div className="pb-4 relative flex items-center justify-center h-28 w-full overflow-visible">
         {/* 1. Start Record Button (Idle State) */}

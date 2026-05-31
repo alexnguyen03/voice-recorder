@@ -11,6 +11,7 @@ export interface RecordConfig {
   sample_rate: number;
   channels: number;
   bit_depth: number;
+  voice_enhance?: boolean;
 }
 
 export interface VoiceEffectOptions {
@@ -297,4 +298,3 @@ export const AudioService = {
     }
   },
 };
-

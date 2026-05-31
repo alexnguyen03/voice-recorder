@@ -10,7 +10,7 @@ export interface UseAudioRecorderReturn {
   loading: boolean;
   error: string | null;
   selectDevice: (deviceId: string) => void;
-  startRecording: (sampleRate?: number) => Promise<void>;
+  startRecording: (sampleRate?: number, voiceEnhance?: boolean) => Promise<void>;
   stopRecording: () => Promise<string | null>;
   pauseRecording: () => Promise<void>;
   resumeRecording: () => Promise<void>;
@@ -59,7 +59,7 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
   }, []);
 
   const startRecording = useCallback(
-    async (sampleRate: number = 44100) => {
+    async (sampleRate: number = 44100, voiceEnhance: boolean = true) => {
       setLoading(true);
       setError(null);
       try {
@@ -68,6 +68,7 @@ export const useAudioRecorder = (): UseAudioRecorderReturn => {
           sample_rate: sampleRate,
           channels: 1, // Default Mono for speech recording
           bit_depth: 16,
+          voice_enhance: voiceEnhance,
         };
         await AudioService.startRecording(config);
         setIsRecording(true);

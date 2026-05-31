@@ -18,6 +18,7 @@ function App() {
   const [filesList, setFilesList] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [voiceEnhance, setVoiceEnhance] = useState(true);
 
   const {
     isRecording,
@@ -107,7 +108,7 @@ function App() {
       }
     } else {
       setStatusMessage("Opening mic stream...");
-      await startRecording();
+      await startRecording(44100, voiceEnhance);
       if (!error) {
         setStatusMessage("Recording active");
       }
@@ -279,6 +280,8 @@ function App() {
             resumeRecording={resumeRecording}
             pauseRecording={pauseRecording}
             statusMessage={statusMessage}
+            voiceEnhance={voiceEnhance}
+            setVoiceEnhance={setVoiceEnhance}
           />
         )}
 
