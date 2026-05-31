@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { FolderOpen, Music, Search, X, Trash2 } from "lucide-react";
-import { AudioService } from "../services/audioService";
+import { FolderOpen, Music, Search, X, Trash2, Clock, Calendar } from "lucide-react";
+import { AudioService, RecordingInfo } from "../services/audioService";
 
 interface LibraryPageProps {
   filesList: string[];
@@ -8,6 +8,23 @@ interface LibraryPageProps {
   getFileName: (path: string) => string;
   refreshFiles: () => void;
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDuration(secs: number): string {
+  if (!secs || secs <= 0) return "--:--";
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatDate(epochSecs: number): string {
+  if (!epochSecs) return "";
+  const d = new Date(epochSecs * 1000);
+  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({
   filesList,
@@ -19,52 +36,49 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   const [selected,    setSelected]    = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting,    setDeleting]    = useState(false);
+  // Map<path, RecordingInfo>
+  const [meta, setMeta] = useState<Map<string, RecordingInfo>>(new Map());
 
   useEffect(() => { refreshFiles(); }, [refreshFiles]);
 
+  // Load metadata whenever filesList changes
+  useEffect(() => {
+    if (filesList.length === 0) { setMeta(new Map()); return; }
+    AudioService.getRecordingsInfo(filesList).then(infos => {
+      setMeta(new Map(infos.map(i => [i.path, i])));
+    });
+  }, [filesList]);
+
   const filtered = useMemo(() =>
-    filesList.filter(f =>
-      getFileName(f).toLowerCase().includes(query.toLowerCase())
-    ),
+    filesList.filter(f => getFileName(f).toLowerCase().includes(query.toLowerCase())),
     [filesList, query, getFileName]
   );
 
-  const allSelected  = filtered.length > 0 && filtered.every(f => selected.has(f));
-  const someSelected = filtered.some(f => selected.has(f));
+  const allSelected   = filtered.length > 0 && filtered.every(f => selected.has(f));
+  const someSelected  = filtered.some(f => selected.has(f));
   const selectedCount = [...selected].filter(f => filtered.includes(f)).length;
 
-  // Master checkbox: toggles select-all on current filtered list
   const toggleMaster = useCallback(() => {
     setSelected(prev => {
       const next = new Set(prev);
-      if (allSelected) {
-        filtered.forEach(f => next.delete(f));
-      } else {
-        filtered.forEach(f => next.add(f));
-      }
+      allSelected ? filtered.forEach(f => next.delete(f)) : filtered.forEach(f => next.add(f));
       return next;
     });
     setConfirmOpen(false);
   }, [allSelected, filtered]);
 
   const toggleRow = useCallback((file: string) => {
-    if (!someSelected && !allSelected) {
-      // First selection — enter select mode
-    }
     setSelected(prev => {
       const next = new Set(prev);
       next.has(file) ? next.delete(file) : next.add(file);
       return next;
     });
     setConfirmOpen(false);
-  }, [someSelected, allSelected]);
+  }, []);
 
   const handleRowClick = (file: string) => {
-    if (someSelected || allSelected) {
-      toggleRow(file);
-    } else {
-      onSelectFile(file);
-    }
+    if (someSelected || allSelected) toggleRow(file);
+    else onSelectFile(file);
   };
 
   const handleConfirmDelete = async () => {
@@ -94,15 +108,13 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
           )}
         </h2>
 
-        {/* Search row with master checkbox */}
         {filesList.length > 0 && (
           <div className="flex items-center gap-2">
-            {/* Master select-all checkbox */}
+            {/* Master checkbox */}
             <button
               onClick={toggleMaster}
               title={allSelected ? "Deselect all" : "Select all"}
-              className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center
-                transition-all duration-150 cursor-pointer active:scale-90"
+              className="flex-shrink-0 cursor-pointer active:scale-90 transition-transform"
             >
               <div className={`w-5 h-5 rounded border-2 flex items-center justify-center
                 transition-all duration-150
@@ -111,8 +123,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                   : someSelected
                     ? "bg-violet-200 border-violet-400 dark:bg-violet-900/40 dark:border-violet-500"
                     : "border-slate-300 dark:border-slate-600 hover:border-violet-400"
-                }`}
-              >
+                }`}>
                 {allSelected && (
                   <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
                     <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.2"
@@ -125,7 +136,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               </div>
             </button>
 
-            {/* Search input */}
+            {/* Search */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5
                 text-slate-400 pointer-events-none" />
@@ -177,18 +188,19 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
           <div className="flex flex-col gap-1.5">
             {filtered.map(file => {
               const isChecked = selected.has(file);
+              const info = meta.get(file);
               return (
                 <div
                   key={file}
                   onClick={() => handleRowClick(file)}
-                  className={`flex items-center gap-3 p-3.5 rounded-lg cursor-pointer
+                  className={`flex items-center gap-3 px-3.5 py-3 rounded-lg cursor-pointer
                     transition-all duration-150 group
                     ${isChecked
                       ? "bg-violet-50 dark:bg-violet-950/30 ring-1 ring-violet-400/30"
                       : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/50 dark:hover:bg-slate-900"
                     }`}
                 >
-                  {/* Row checkbox */}
+                  {/* Checkbox */}
                   <div
                     onClick={e => { e.stopPropagation(); toggleRow(file); }}
                     className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center
@@ -206,9 +218,11 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                     )}
                   </div>
 
-                  {/* File icon + info */}
+                  {/* Icon */}
                   <Music className={`w-4 h-4 flex-shrink-0 transition-colors
                     ${isChecked ? "text-violet-400" : "text-slate-400 dark:text-slate-500"}`} />
+
+                  {/* File info */}
                   <div className="overflow-hidden min-w-0 flex-1">
                     <div className={`text-sm font-semibold truncate transition-colors
                       ${isChecked
@@ -217,7 +231,24 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                       }`}>
                       {getFileName(file)}
                     </div>
-                    <div className="text-[10px] text-slate-400 truncate mt-0.5">{file}</div>
+
+                    {/* Duration + Date row */}
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {info ? (
+                        <>
+                          <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                            <Clock className="w-3 h-3 flex-shrink-0" />
+                            {formatDuration(info.duration_secs)}
+                          </span>
+                          <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                            <Calendar className="w-3 h-3 flex-shrink-0" />
+                            {formatDate(info.created_at_secs)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 truncate">{file}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -226,19 +257,17 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
         )}
       </div>
 
-      {/* ── Sticky action bar (visible when items selected) ─────────── */}
+      {/* ── Sticky action bar ───────────────────────────────────────── */}
       <div className={`overflow-hidden transition-all duration-300 ease-out
         ${isSelectMode ? "max-h-20 opacity-100" : "max-h-0 opacity-0"}`}>
         <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-700
           flex items-center justify-between gap-3
           bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-b-sm">
-
-          {/* Count label */}
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex-shrink-0">
             {selectedCount} file{selectedCount !== 1 ? "s" : ""} selected
           </span>
 
-          {/* Inline confirm pill — same pattern as RecordingPage discard */}
+          {/* Inline confirm pill */}
           <div className={`flex items-center overflow-hidden transition-all duration-300 ease-out
             rounded-full h-10
             ${confirmOpen
@@ -246,14 +275,12 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               : "w-36 bg-rose-600 hover:bg-rose-500 px-0"
             }`}>
             {confirmOpen ? (
-              /* Expanded: [✗] "Delete?" [✓] */
-              <div className="flex items-center justify-between w-full transition-all">
+              <div className="flex items-center justify-between w-full">
                 <button
                   onClick={() => setConfirmOpen(false)}
                   className="w-8 h-8 rounded-full bg-slate-200 hover:bg-slate-300
                     dark:bg-slate-700 dark:hover:bg-slate-600
-                    flex items-center justify-center cursor-pointer active:scale-95
-                    transition-all flex-shrink-0"
+                    flex items-center justify-center cursor-pointer active:scale-95 transition-all"
                 >
                   <X className="w-4 h-4 text-slate-600 dark:text-slate-300" />
                 </button>
@@ -266,7 +293,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                   disabled={deleting}
                   className="w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-500
                     flex items-center justify-center cursor-pointer active:scale-95
-                    transition-all flex-shrink-0 disabled:opacity-60"
+                    transition-all disabled:opacity-60"
                 >
                   {deleting
                     ? <span className="w-3.5 h-3.5 border-2 border-white/30
@@ -279,7 +306,6 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 </button>
               </div>
             ) : (
-              /* Collapsed: trash + label button */
               <button
                 onClick={() => setConfirmOpen(true)}
                 className="w-full h-full flex items-center justify-center gap-1.5

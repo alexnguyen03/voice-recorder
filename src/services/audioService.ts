@@ -51,6 +51,14 @@ export interface SeparationResult {
 
 export type SeparationOutputMode = "vocals_only" | "accompaniment_only" | "both";
 
+/** Lightweight WAV file metadata (header-only read, no full decode). */
+export interface RecordingInfo {
+  path:             string;
+  duration_secs:    number;
+  file_size_bytes:  number;
+  created_at_secs:  number; // Unix epoch seconds
+}
+
 /** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams. */
 export interface FilterParams {
   bass_boost: number;
@@ -229,5 +237,12 @@ export const AudioService = {
     if (!isTauri()) return;
     try { await invoke("delete_recording", { filePath }); }
     catch (e) { throw new Error(String(e)); }
+  },
+
+  /** Batch-read WAV header metadata (duration, size, date) for multiple files. Fast — no full decode. */
+  async getRecordingsInfo(filePaths: string[]): Promise<RecordingInfo[]> {
+    if (!isTauri() || filePaths.length === 0) return [];
+    try { return await invoke<RecordingInfo[]>("get_recordings_info", { filePaths }); }
+    catch (e) { return []; }
   },
 };

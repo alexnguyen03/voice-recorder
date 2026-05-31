@@ -1,8 +1,58 @@
 use std::sync::{Arc, Mutex};
 use tauri::{State, AppHandle, Manager, Emitter};
+use serde::Serialize;
 use crate::core::models::{DeviceInfo, RecordConfig};
 use crate::infra::{CpalRecorder, LocalStorage};
 use crate::core::traits::{AudioRecorder, AudioStorage};
+
+/// Metadata for a single recording file.
+#[derive(Debug, Clone, Serialize)]
+pub struct RecordingInfo {
+    pub path:            String,
+    pub duration_secs:   f64,
+    pub file_size_bytes: u64,
+    /// Unix epoch (seconds) parsed from filename like `recording_<epoch>.wav`,
+    /// or falls back to file-system modified time.
+    pub created_at_secs: u64,
+}
+
+/// Read lightweight metadata for a list of recording paths.
+/// Uses `hound` to read only the WAV header (no full decode) for fast duration.
+#[tauri::command]
+pub fn get_recordings_info(file_paths: Vec<String>) -> Vec<RecordingInfo> {
+    file_paths
+        .into_iter()
+        .filter_map(|path| {
+            let fs_meta = std::fs::metadata(&path).ok()?;
+            let file_size_bytes = fs_meta.len();
+
+            // Duration from WAV header (hound reads only header, not samples)
+            let duration_secs = hound::WavReader::open(&path)
+                .ok()
+                .map(|r| {
+                    let spec = r.spec();
+                    r.duration() as f64 / spec.sample_rate as f64
+                })
+                .unwrap_or(0.0);
+
+            // Creation time: prefer epoch embedded in filename, else file mtime
+            let created_at_secs = std::path::Path::new(&path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.strip_prefix("recording_"))
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or_else(|| {
+                    fs_meta.modified().ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0)
+                });
+
+            Some(RecordingInfo { path, duration_secs, file_size_bytes, created_at_secs })
+        })
+        .collect()
+}
+
 
 // Thread-safe wrapper holding the CpalRecorder for Tauri IPC State management
 pub struct RecorderState {
