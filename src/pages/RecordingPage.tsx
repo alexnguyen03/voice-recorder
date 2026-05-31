@@ -1,5 +1,6 @@
 import React from "react";
 import { AudioVisualizer } from "../components/visualizer/AudioVisualizer";
+import { LiveSpectrumAnalyzer } from "../components/visualizer/LiveSpectrumAnalyzer";
 
 interface RecordingPageProps {
   isRecording: boolean;
@@ -29,8 +30,13 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
   return (
     <section className="flex flex-col items-center bg-slate-100 dark:bg-slate-800 rounded-sm max-w-lg mx-auto w-full transition-colors duration-300 animate-fade-in">
       {/* Waveform Visualizer shown always */}
-      <div className="w-full mb-8">
+      <div className="w-full">
         <AudioVisualizer isRecording={isRecording} isPaused={isPaused} />
+      </div>
+
+      {/* Live Frequency Spectrum — slides in during recording */}
+      <div className="w-full mb-4">
+        <LiveSpectrumAnalyzer isRecording={isRecording} isPaused={isPaused} />
       </div>
 
       <div className="pb-4 relative flex items-center justify-center h-28 w-full overflow-visible">
