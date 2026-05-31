@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { ArrowLeft, Scissors, Wand2, ChevronDown, Check, X, RotateCcw, Download, Loader2 } from "lucide-react";
-import { WaveformEditor, WaveformEditorHandle } from "../components/editor/WaveformEditor";
+import { WaveformEditor, WaveformEditorHandle, VoiceLayerFrame } from "../components/editor/WaveformEditor";
 import { AudioService } from "../services/audioService";
 
 interface VoiceDetailStudioProps {
@@ -19,6 +19,10 @@ interface VoiceDetailStudioProps {
     treble_boost: number;
     volume_boost: number;
     mic_eq_enhancement: boolean;
+    ml_voice_layers_enabled?: boolean;
+    reduce_sibilance?: boolean;
+    reduce_breath?: boolean;
+    reduce_plosive?: boolean;
   }) => Promise<void>;
   statusMessage: string;
 }
@@ -54,6 +58,8 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [activeAudioUrl, setActiveAudioUrl] = useState(() => toAudioUrl(selectedFile));
   const [hasPreview, setHasPreview] = useState(false);  // true = player is on preview
   const [isProcessing, setIsProcessing] = useState(false); // Rust is rendering
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [voiceLayers, setVoiceLayers] = useState<VoiceLayerFrame[]>([]);
 
   // ── Filter state ─────────────────────────────────────────────────────────────
   const [noiseSuppression, setNoiseSuppression] = useState(false);
@@ -61,9 +67,14 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [bass,   setBass]   = useState(0.5); // 0.5 = neutral
   const [treble, setTreble] = useState(0.5);
   const [volume, setVolume] = useState(0.5);
+  const [mlVoiceLayers, setMlVoiceLayers] = useState(false);
+  const [reduceSibilance, setReduceSibilance] = useState(false);
+  const [reduceBreath, setReduceBreath] = useState(false);
+  const [reducePlosive, setReducePlosive] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  const isFiltersActive = bass !== 0.5 || treble !== 0.5 || volume !== 0.5 || noiseSuppression || micEqEnhancement;
+  const isFiltersActive = bass !== 0.5 || treble !== 0.5 || volume !== 0.5 || noiseSuppression || micEqEnhancement ||
+    mlVoiceLayers || reduceSibilance || reduceBreath || reducePlosive;
 
   // ── Edit mode (trim/cut) ─────────────────────────────────────────────────────
   const [actionMode, setActionMode] = useState<ActionMode>(null);
@@ -79,10 +90,12 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     setActiveAudioUrl(toAudioUrl(selectedFile));
     setHasPreview(false);
     setIsProcessing(false);
+    setPreviewError(null);
 
     // Reset filter state
     setBass(0.5); setTreble(0.5); setVolume(0.5);
     setNoiseSuppression(false); setMicEqEnhancement(false);
+    setMlVoiceLayers(false); setReduceSibilance(false); setReduceBreath(false); setReducePlosive(false);
 
     // Check if a preview session was saved for this file
     AudioService.loadPreviewMeta(selectedFile).then((meta) => {
@@ -93,6 +106,10 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       setVolume(meta.filters.volume_boost);
       setNoiseSuppression(meta.filters.noise_suppression);
       setMicEqEnhancement(meta.filters.mic_eq_enhancement);
+      setMlVoiceLayers(meta.filters.ml_voice_layers_enabled ?? false);
+      setReduceSibilance(meta.filters.reduce_sibilance ?? false);
+      setReduceBreath(meta.filters.reduce_breath ?? false);
+      setReducePlosive(meta.filters.reduce_plosive ?? false);
       // Load the saved preview WAV directly
       setActiveAudioUrl(toAudioUrl(meta.preview_file));
       setHasPreview(true);
@@ -100,26 +117,41 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     });
   }, [selectedFile]);
 
+  useEffect(() => {
+    let active = true;
+    setVoiceLayers([]);
+    AudioService.analyzeVoiceLayers(selectedFile).then((frames) => {
+      if (active) setVoiceLayers(frames);
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedFile]);
+
   // ── Core: trigger Rust preview generation (debounced) ────────────────────────
   const schedulePreview = useCallback((filters: {
     bass: number; treble: number; volume: number;
     noiseSuppression: boolean; micEqEnhancement: boolean;
+    mlVoiceLayers: boolean; reduceSibilance: boolean; reduceBreath: boolean; reducePlosive: boolean;
   }) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const allFlat = filters.bass === 0.5 && filters.treble === 0.5 &&
-                    filters.volume === 0.5 && !filters.noiseSuppression && !filters.micEqEnhancement;
+                    filters.volume === 0.5 && !filters.noiseSuppression && !filters.micEqEnhancement &&
+                    !filters.mlVoiceLayers && !filters.reduceSibilance && !filters.reduceBreath && !filters.reducePlosive;
 
     if (allFlat) {
       // All filters neutral → revert to original, clear preview cache
       setActiveAudioUrl(toAudioUrl(selectedFile));
       setHasPreview(false);
+      setPreviewError(null);
       AudioService.clearPreview(selectedFile);
       return;
     }
 
     debounceRef.current = setTimeout(async () => {
       setIsProcessing(true);
+      setPreviewError(null);
       try {
         const previewPath = await AudioService.createPreview(selectedFile, {
           enable_noise_suppression: filters.noiseSuppression,
@@ -127,12 +159,17 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           treble_boost:             filters.treble,
           volume_boost:             filters.volume,
           mic_eq_enhancement:       filters.micEqEnhancement,
+          ml_voice_layers_enabled:  filters.mlVoiceLayers,
+          reduce_sibilance:         filters.reduceSibilance,
+          reduce_breath:            filters.reduceBreath,
+          reduce_plosive:           filters.reducePlosive,
         });
         // Bust the URL so the audio element re-loads (add timestamp cache-buster)
         setActiveAudioUrl(toAudioUrl(previewPath) + `?t=${Date.now()}`);
         setHasPreview(true);
       } catch (err) {
         console.error("[VoiceDetailStudio] createPreview failed:", err);
+        setPreviewError(`Preview error: ${err}`);
       } finally {
         setIsProcessing(false);
       }
@@ -144,23 +181,51 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   // and schedules a debounced Rust render.
   const handleBassChange = (v: number) => {
     setBass(v);
-    schedulePreview({ bass: v, treble, volume, noiseSuppression, micEqEnhancement });
+    schedulePreview({ bass: v, treble, volume, noiseSuppression, micEqEnhancement, mlVoiceLayers, reduceSibilance, reduceBreath, reducePlosive });
   };
   const handleTrebleChange = (v: number) => {
     setTreble(v);
-    schedulePreview({ bass, treble: v, volume, noiseSuppression, micEqEnhancement });
+    schedulePreview({ bass, treble: v, volume, noiseSuppression, micEqEnhancement, mlVoiceLayers, reduceSibilance, reduceBreath, reducePlosive });
   };
   const handleVolumeChange = (v: number) => {
     setVolume(v);
-    schedulePreview({ bass, treble, volume: v, noiseSuppression, micEqEnhancement });
+    schedulePreview({ bass, treble, volume: v, noiseSuppression, micEqEnhancement, mlVoiceLayers, reduceSibilance, reduceBreath, reducePlosive });
   };
   const handleNoiseSuppressionChange = (v: boolean) => {
     setNoiseSuppression(v);
-    schedulePreview({ bass, treble, volume, noiseSuppression: v, micEqEnhancement });
+    schedulePreview({ bass, treble, volume, noiseSuppression: v, micEqEnhancement, mlVoiceLayers, reduceSibilance, reduceBreath, reducePlosive });
   };
   const handleMicEqChange = (v: boolean) => {
     setMicEqEnhancement(v);
-    schedulePreview({ bass, treble, volume, noiseSuppression, micEqEnhancement: v });
+    schedulePreview({ bass, treble, volume, noiseSuppression, micEqEnhancement: v, mlVoiceLayers, reduceSibilance, reduceBreath, reducePlosive });
+  };
+
+  const handleVoiceLayerChange = (next: {
+    mlVoiceLayers?: boolean;
+    reduceSibilance?: boolean;
+    reduceBreath?: boolean;
+    reducePlosive?: boolean;
+  }) => {
+    const nextMl = next.mlVoiceLayers ?? mlVoiceLayers;
+    const nextSibilance = next.reduceSibilance ?? reduceSibilance;
+    const nextBreath = next.reduceBreath ?? reduceBreath;
+    const nextPlosive = next.reducePlosive ?? reducePlosive;
+
+    setMlVoiceLayers(nextMl);
+    setReduceSibilance(nextSibilance);
+    setReduceBreath(nextBreath);
+    setReducePlosive(nextPlosive);
+    schedulePreview({
+      bass,
+      treble,
+      volume,
+      noiseSuppression,
+      micEqEnhancement,
+      mlVoiceLayers: nextMl,
+      reduceSibilance: nextSibilance,
+      reduceBreath: nextBreath,
+      reducePlosive: nextPlosive,
+    });
   };
 
   // ── Reset all filters ─────────────────────────────────────────────────────────
@@ -168,8 +233,10 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setBass(0.5); setTreble(0.5); setVolume(0.5);
     setNoiseSuppression(false); setMicEqEnhancement(false);
+    setMlVoiceLayers(false); setReduceSibilance(false); setReduceBreath(false); setReducePlosive(false);
     setActiveAudioUrl(toAudioUrl(selectedFile));
     setHasPreview(false);
+    setPreviewError(null);
     await AudioService.clearPreview(selectedFile);
   }, [selectedFile]);
 
@@ -182,8 +249,12 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       treble_boost:             treble,
       volume_boost:             volume,
       mic_eq_enhancement:       micEqEnhancement,
+      ml_voice_layers_enabled:  mlVoiceLayers,
+      reduce_sibilance:         reduceSibilance,
+      reduce_breath:            reduceBreath,
+      reduce_plosive:           reducePlosive,
     });
-  }, [onApplyEffects, noiseSuppression, bass, treble, volume, micEqEnhancement]);
+  }, [onApplyEffects, noiseSuppression, bass, treble, volume, micEqEnhancement, mlVoiceLayers, reduceSibilance, reduceBreath, reducePlosive]);
 
   // ── Trim/Cut confirm ──────────────────────────────────────────────────────────
   const handleConfirm = useCallback(async () => {
@@ -218,6 +289,8 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     return `${m}:${rem.toString().padStart(2, "0")}.${msRem.toString().padStart(3, "0").slice(0, 2)}`;
   };
 
+  const processingLabel = mlVoiceLayers ? "DOWNLOADING MODEL / RENDERING" : "RENDERING";
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="w-full flex flex-col gap-0 animate-fade-in">
@@ -243,7 +316,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         {isProcessing && (
           <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold tracking-wide flex-shrink-0">
             <Loader2 className="w-2.5 h-2.5 animate-spin" />
-            RENDERING
+            {processingLabel}
           </span>
         )}
       </div>
@@ -253,6 +326,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         ref={waveformRef}
         filePath={selectedFile}
         audioUrl={activeAudioUrl}
+        voiceLayers={voiceLayers}
         onTrim={onTrim}
         editMode={actionMode}
         onPlayStateChange={setIsPlaying}
@@ -261,6 +335,16 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           setTrimEnd(end);
         }}
       />
+
+      {voiceLayers.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mt-2 px-1 text-[10px] text-slate-400 dark:text-slate-500">
+          <span className="font-bold text-slate-500 dark:text-slate-400">Layer map</span>
+          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/70" /> Main voice</span>
+          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-500/80" /> Xì/Sibilance</span>
+          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-sky-500/70" /> Breath</span>
+          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500/80" /> Phì/Plosive</span>
+        </div>
+      )}
 
       {/* Confirm bar — slides in when trim/cut is active */}
       <div
@@ -379,6 +463,11 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           {statusMessage}
         </div>
       )}
+      {previewError && (
+        <div className="mt-2 text-xs text-red-600 dark:text-red-400 font-semibold bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded-sm">
+          {previewError}
+        </div>
+      )}
 
       {/* Voice Filters */}
       <div className="mt-3">
@@ -397,12 +486,12 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           {isProcessing && (
             <span className="ml-1 flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
               <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              RENDERING…
+              {processingLabel}...
             </span>
           )}
         </button>
 
-        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[560px] opacity-100" : "max-h-0 opacity-0"}`}>
+        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[760px] opacity-100" : "max-h-0 opacity-0"}`}>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-sm p-4 flex flex-col gap-4">
 
             {/* Info notice */}
@@ -439,6 +528,76 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
                   Low Quality Mic Fix
                 </label>
                 <span className="text-[10px] text-slate-400 ml-auto">Removes rumble & hiss</span>
+              </div>
+            </div>
+
+            {/* Voice Layers */}
+            <div className="flex flex-col gap-3 border-t border-slate-200 dark:border-slate-700 pt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                  Voice Layers
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                  Applies to preview/export only
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="flex items-center gap-2.5 p-2 rounded-sm bg-white/60 dark:bg-slate-900/40 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={mlVoiceLayers}
+                    onChange={(e) => handleVoiceLayerChange({ mlVoiceLayers: e.target.checked })}
+                    disabled={isProcessing}
+                    className="cursor-pointer w-4 h-4 rounded accent-violet-500 disabled:cursor-not-allowed"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-xs text-slate-700 dark:text-slate-200 font-medium">Main Vocal Focus</span>
+                    <span className="text-[10px] text-slate-400">Downloads ML model on first use</span>
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2.5 p-2 rounded-sm bg-white/60 dark:bg-slate-900/40 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reduceSibilance}
+                    onChange={(e) => handleVoiceLayerChange({ reduceSibilance: e.target.checked })}
+                    disabled={isProcessing}
+                    className="cursor-pointer w-4 h-4 rounded accent-violet-500 disabled:cursor-not-allowed"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-xs text-slate-700 dark:text-slate-200 font-medium">Reduce Xì / Sibilance</span>
+                    <span className="text-[10px] text-slate-400">Softens harsh s, sh, xì bands</span>
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2.5 p-2 rounded-sm bg-white/60 dark:bg-slate-900/40 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reduceBreath}
+                    onChange={(e) => handleVoiceLayerChange({ reduceBreath: e.target.checked })}
+                    disabled={isProcessing}
+                    className="cursor-pointer w-4 h-4 rounded accent-violet-500 disabled:cursor-not-allowed"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-xs text-slate-700 dark:text-slate-200 font-medium">Reduce Breath</span>
+                    <span className="text-[10px] text-slate-400">Lowers close-mic inhale/exhale</span>
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2.5 p-2 rounded-sm bg-white/60 dark:bg-slate-900/40 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reducePlosive}
+                    onChange={(e) => handleVoiceLayerChange({ reducePlosive: e.target.checked })}
+                    disabled={isProcessing}
+                    className="cursor-pointer w-4 h-4 rounded accent-violet-500 disabled:cursor-not-allowed"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-xs text-slate-700 dark:text-slate-200 font-medium">Reduce Phì / Plosive</span>
+                    <span className="text-[10px] text-slate-400">Tames p, b, phì thumps</span>
+                  </span>
+                </label>
               </div>
             </div>
 

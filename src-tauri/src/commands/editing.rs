@@ -1,4 +1,5 @@
-use crate::infra::{LocalStorage, DspEngine};
+use tauri::AppHandle;
+use crate::infra::{LocalStorage, DspEngine, VoiceLayerEngine, VoiceLayerOptions};
 use crate::core::traits::{AudioStorage, AudioProcessor};
 
 #[tauri::command]
@@ -77,18 +78,35 @@ pub fn cut_audio_segment(
 
 #[tauri::command]
 pub fn apply_voice_effects(
+    app: AppHandle,
     file_path: String,
     enable_noise_suppression: bool,
     bass_boost: f32,
     treble_boost: f32,
     volume_boost: f32,
     mic_eq_enhancement: bool,
+    ml_voice_layers_enabled: bool,
+    reduce_sibilance: bool,
+    reduce_breath: bool,
+    reduce_plosive: bool,
 ) -> Result<String, String> {
     let storage = LocalStorage::new();
     let dsp = DspEngine::new();
+    let voice_layers = VoiceLayerEngine::new();
 
     // 1. Load raw PCM
     let mut buffer = storage.load_file(&file_path).map_err(|e| e.to_string())?;
+
+    voice_layers.process(
+        &app,
+        &mut buffer,
+        VoiceLayerOptions {
+            ml_voice_layers_enabled,
+            reduce_sibilance,
+            reduce_breath,
+            reduce_plosive,
+        },
+    )?;
 
     // 2. Apply the full EQ chain — order mirrors the Web Audio graph in WaveformEditor:
     //    rumble/hiss (mic_eq) → bass shelf → treble shelf → volume gain

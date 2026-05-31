@@ -170,6 +170,10 @@ function App() {
     treble_boost: number;
     volume_boost: number;
     mic_eq_enhancement: boolean;
+    ml_voice_layers_enabled?: boolean;
+    reduce_sibilance?: boolean;
+    reduce_breath?: boolean;
+    reduce_plosive?: boolean;
   }) => {
     if (!selectedFile) return;
     setStatusMessage("Exporting with filters...");
@@ -180,6 +184,10 @@ function App() {
         treble_boost: effects.treble_boost,
         volume_boost: effects.volume_boost,
         mic_eq_enhancement: effects.mic_eq_enhancement,
+        ml_voice_layers_enabled: effects.ml_voice_layers_enabled,
+        reduce_sibilance: effects.reduce_sibilance,
+        reduce_breath: effects.reduce_breath,
+        reduce_plosive: effects.reduce_plosive,
       });
       // Non-destructive: stay on the original file, just add the export to library
       setStatusMessage(`Exported: ${getFileName(exportPath)}`);

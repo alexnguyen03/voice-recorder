@@ -1,7 +1,8 @@
 use tauri::{AppHandle, Manager};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::infra::{LocalStorage, DspEngine};
+use crate::infra::{LocalStorage, DspEngine, VoiceLayerEngine, VoiceLayerOptions};
+use crate::infra::voice_layer_engine::VoiceLayerFrame;
 use crate::core::traits::{AudioStorage, AudioProcessor};
 
 /// Filter parameter set — serialized to/from the .meta.json sidecar file.
@@ -12,6 +13,14 @@ pub struct FilterParams {
     pub volume_boost: f32,
     pub noise_suppression: bool,
     pub mic_eq_enhancement: bool,
+    #[serde(default)]
+    pub ml_voice_layers_enabled: bool,
+    #[serde(default)]
+    pub reduce_sibilance: bool,
+    #[serde(default)]
+    pub reduce_breath: bool,
+    #[serde(default)]
+    pub reduce_plosive: bool,
 }
 
 /// Full preview sidecar metadata — written alongside the processed preview WAV.
@@ -83,12 +92,28 @@ pub fn create_preview(
     treble_boost: f32,
     volume_boost: f32,
     mic_eq_enhancement: bool,
+    ml_voice_layers_enabled: bool,
+    reduce_sibilance: bool,
+    reduce_breath: bool,
+    reduce_plosive: bool,
 ) -> Result<String, String> {
     let storage = LocalStorage::new();
     let dsp     = DspEngine::new();
+    let voice_layers = VoiceLayerEngine::new();
 
     // Load original PCM
     let mut buffer = storage.load_file(&file_path).map_err(|e| e.to_string())?;
+
+    voice_layers.process(
+        &app,
+        &mut buffer,
+        VoiceLayerOptions {
+            ml_voice_layers_enabled,
+            reduce_sibilance,
+            reduce_breath,
+            reduce_plosive,
+        },
+    )?;
 
     // Apply EQ chain (Rust is the sole engine — what you hear = what you export)
     buffer.samples = dsp
@@ -117,7 +142,7 @@ pub fn create_preview(
 
     // Write meta sidecar
     let meta = PreviewMeta {
-        version: 1,
+        version: 2,
         source_file: file_path,
         preview_file: preview_str.clone(),
         filters: FilterParams {
@@ -126,6 +151,10 @@ pub fn create_preview(
             volume_boost,
             noise_suppression: enable_noise_suppression,
             mic_eq_enhancement,
+            ml_voice_layers_enabled,
+            reduce_sibilance,
+            reduce_breath,
+            reduce_plosive,
         },
     };
     let json = serde_json::to_string_pretty(&meta)
@@ -178,4 +207,12 @@ pub fn clear_preview(app: AppHandle, file_path: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to delete preview meta: {}", e))?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn analyze_voice_layers(file_path: String) -> Result<Vec<VoiceLayerFrame>, String> {
+    let storage = LocalStorage::new();
+    let buffer = storage.load_file(&file_path).map_err(|e| e.to_string())?;
+    let engine = VoiceLayerEngine::new();
+    Ok(engine.analyze_layers(&buffer))
 }
