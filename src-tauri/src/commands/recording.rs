@@ -120,3 +120,32 @@ pub fn discard_audio_recording(
     let _ = recorder.stop_recording().map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// Delete a saved recording file from disk.
+/// Also removes associated sidecar files: _preview.wav, _preview.json,
+/// _vocals.wav, _accompaniment.wav if they exist.
+#[tauri::command]
+pub fn delete_recording(file_path: String) -> Result<(), String> {
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+
+    // Remove the main file
+    std::fs::remove_file(path)
+        .map_err(|e| format!("Failed to delete recording: {}", e))?;
+
+    // Clean up associated sidecar files (best-effort, no error if missing)
+    let base = file_path.trim_end_matches(".wav");
+    let sidecars = [
+        format!("{}_preview.wav",        base),
+        format!("{}_preview.json",       base),
+        format!("{}_vocals.wav",         base),
+        format!("{}_accompaniment.wav",  base),
+    ];
+    for sidecar in &sidecars {
+        let _ = std::fs::remove_file(sidecar); // ignore errors
+    }
+
+    Ok(())
+}

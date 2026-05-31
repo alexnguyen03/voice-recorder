@@ -223,4 +223,11 @@ export const AudioService = {
       throw new Error(String(e));
     }
   },
+
+  /** Delete a recording and all its sidecar files (_preview, _vocals, _accompaniment). */
+  async deleteRecording(filePath: string): Promise<void> {
+    if (!isTauri()) return;
+    try { await invoke("delete_recording", { filePath }); }
+    catch (e) { throw new Error(String(e)); }
+  },
 };
