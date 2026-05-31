@@ -87,37 +87,27 @@ pub fn apply_voice_effects(
     let storage = LocalStorage::new();
     let dsp = DspEngine::new();
 
-    // 1. Read the target raw WAV file back into float PCM memory
+    // 1. Load raw PCM
     let mut buffer = storage.load_file(&file_path).map_err(|e| e.to_string())?;
 
-    // 2. Apply mic EQ first (highpass/lowpass/notch filters) so the noise gate
-    //    sees a clean signal and isn't false-triggered by rumble/hiss.
-    //    Run enhance_voice with neutral EQ and no volume change — only mic_eq matters here.
-    if mic_eq_enhancement {
-        buffer.samples = dsp.enhance_voice(
-            &buffer.samples,
-            0.5,   // bass neutral
-            0.5,   // treble neutral
-            0.5,   // volume neutral (1x)
-            true,  // mic_eq_enhancement ON
-        ).map_err(|e| e.to_string())?;
-    }
-
-    // 3. Noise gate on the mic-EQ cleaned signal (matches live pipeline order)
-    if enable_noise_suppression {
-        buffer.samples = dsp.suppress_noise(&buffer.samples).map_err(|e| e.to_string())?;
-    }
-
-    // 4. Apply bass/treble EQ shaping + volume gain (mic_eq already done above)
+    // 2. Apply the full EQ chain — order mirrors the Web Audio graph in WaveformEditor:
+    //    rumble/hiss (mic_eq) → bass shelf → treble shelf → volume gain
+    //    (all in one enhance_voice pass)
     buffer.samples = dsp.enhance_voice(
         &buffer.samples,
         bass_boost,
         treble_boost,
         volume_boost,
-        false, // mic_eq already applied in step 2, skip here to avoid double-filtering
+        mic_eq_enhancement,
     ).map_err(|e| e.to_string())?;
 
-    // 5. Save enhanced audio as a distinct, non-destructive file
+    // 3. Noise gate LAST — same as the Web Audio graph where the NoiseGate node
+    //    sits after gainNode, gating the already-EQ'd and volume-boosted signal.
+    if enable_noise_suppression {
+        buffer.samples = dsp.suppress_noise(&buffer.samples).map_err(|e| e.to_string())?;
+    }
+
+    // 4. Save as non-destructive copy
     let output_path = file_path.replace(".wav", "_enhanced.wav");
     storage.save_file(&buffer, &output_path).map_err(|e| e.to_string())?;
 

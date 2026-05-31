@@ -175,21 +175,20 @@ impl DspEngine {
 
 impl AudioProcessor for DspEngine {
     fn suppress_noise(&self, input: &[f32]) -> Result<Vec<f32>, AppError> {
-        // Improved Noise Gate with:
-        //   - Separate fast attack / slow release envelope
-        //   - Hysteresis: open_threshold > close_threshold (prevents pumping)
-        //   - Smooth linear knee instead of abrupt quadratic
-        //   - Hold counter to avoid choppy cuts between syllables
-        let sample_rate = 44100.0f32;
-        let open_threshold  = 0.025_f32;  // RMS level to open gate
-        let close_threshold = 0.010_f32;  // RMS level to close gate (hysteresis)
-        let knee_width      = 0.015_f32;  // Smooth transition band above close_threshold
+        // Noise gate — thresholds MUST match the AudioWorklet defaults in
+        // public/noise-gate-processor.js (constructor) so export == live preview:
+        //   open_threshold  = 0.015  (≈ sensitivity 0.65 in the worklet formula)
+        //   close_threshold = 0.006  (= open * 0.40)
+        let sample_rate     = 44100.0f32;
+        let open_threshold  = 0.015_f32;
+        let close_threshold = 0.006_f32;
+        let knee_width      = open_threshold - close_threshold; // 0.009
 
-        // Time constants: attack ~2ms, release ~150ms
+        // Time constants: attack ~2ms, release ~150ms  (same as worklet)
         let attack_coef  = (-1.0_f32 / (0.002 * sample_rate)).exp();
         let release_coef = (-1.0_f32 / (0.150 * sample_rate)).exp();
 
-        // Hold: keep gate open for ~80ms after signal drops below threshold
+        // Hold: keep gate open for ~80ms after signal drops below threshold (same as worklet)
         let hold_samples = (0.080 * sample_rate) as i32;
 
         let mut envelope  = 0.0_f32;
@@ -222,11 +221,10 @@ impl AudioProcessor for DspEngine {
                 hold_counter = hold_samples;
             }
 
-            // Smooth knee: full gain when open, soft fade in transition zone, silent below
+            // Smooth knee: full gain when open, linear ramp in transition zone, silent below
             let gain = if gate_open {
                 1.0
             } else if envelope > close_threshold {
-                // Linear knee between close_threshold and open_threshold
                 ((envelope - close_threshold) / knee_width).min(1.0)
             } else {
                 0.0
@@ -237,6 +235,7 @@ impl AudioProcessor for DspEngine {
 
         Ok(output)
     }
+
 
     fn enhance_voice(
         &self,
