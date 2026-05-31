@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Scissors, Wand2, ChevronDown, Check, X, RotateCcw, Download } from "lucide-react";
-import { WaveformEditor, WaveformEditorHandle, AudioFilters } from "../components/editor/WaveformEditor";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { ArrowLeft, Scissors, Wand2, ChevronDown, Check, X, RotateCcw, Download, Loader2 } from "lucide-react";
+import { WaveformEditor, WaveformEditorHandle } from "../components/editor/WaveformEditor";
+import { AudioService } from "../services/audioService";
 
 interface VoiceDetailStudioProps {
   selectedFile: string;
-  audioUrl: string;
   onBack: () => void;
   onTrim: (startMs: number, endMs: number) => Promise<void>;
   onCut: (startMs: number, endMs: number) => Promise<void>;
+  /**
+   * Called when user clicks "Export with Filters".
+   * App.tsx handles the actual DSP + refreshFiles().
+   */
   onApplyEffects: (effects: {
     enable_noise_suppression: boolean;
     bass_boost: number;
@@ -20,9 +25,20 @@ interface VoiceDetailStudioProps {
 
 type ActionMode = "trim" | "cut" | null;
 
+const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
+
+/** Derive a playable asset URL from an absolute file path. */
+const toAudioUrl = (filePath: string): string => {
+  if (!filePath) return "";
+  if (!isTauri) return "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+  return convertFileSrc(filePath);
+};
+
+// ─── Debounce delay before firing a Rust preview render ───────────────────────
+const PREVIEW_DEBOUNCE_MS = 500;
+
 export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   selectedFile,
-  audioUrl,
   onBack,
   onTrim,
   onCut,
@@ -32,71 +48,167 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const waveformRef = useRef<WaveformEditorHandle>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Filter state — live preview via Web Audio API, never writes to original file
+  // ── Audio URL state ──────────────────────────────────────────────────────────
+  // Starts as the original file. Switches to the Rust-processed preview WAV
+  // whenever filters are active. This is the ONLY URL the player sees.
+  const [activeAudioUrl, setActiveAudioUrl] = useState(() => toAudioUrl(selectedFile));
+  const [hasPreview, setHasPreview] = useState(false);  // true = player is on preview
+  const [isProcessing, setIsProcessing] = useState(false); // Rust is rendering
+
+  // ── Filter state ─────────────────────────────────────────────────────────────
   const [noiseSuppression, setNoiseSuppression] = useState(false);
   const [micEqEnhancement, setMicEqEnhancement] = useState(false);
-  const [bass, setBass] = useState(0.5);   // 0.5 = neutral
-  const [treble, setTreble] = useState(0.5); // 0.5 = neutral
-  const [volume, setVolume] = useState(0.5); // 0.5 = neutral (1x)
+  const [bass,   setBass]   = useState(0.5); // 0.5 = neutral
+  const [treble, setTreble] = useState(0.5);
+  const [volume, setVolume] = useState(0.5);
   const [showFilters, setShowFilters] = useState(false);
-  const [applyFilters, setApplyFilters] = useState(true);
 
-  const filters: AudioFilters = { bassBoost: bass, trebleBoost: treble, volumeBoost: volume, micEqEnhancement, noiseSuppression };
-  const currentFilters = applyFilters ? filters : {
-    bassBoost: 0.5,
-    trebleBoost: 0.5,
-    volumeBoost: 0.5,
-    micEqEnhancement: false,
-    noiseSuppression: false
-  };
   const isFiltersActive = bass !== 0.5 || treble !== 0.5 || volume !== 0.5 || noiseSuppression || micEqEnhancement;
 
-  const resetFilters = () => { setBass(0.5); setTreble(0.5); setVolume(0.5); setNoiseSuppression(false); setMicEqEnhancement(false); };
-
-  // Action mode: null = idle, "trim" = keep selection, "cut" = remove selection
+  // ── Edit mode (trim/cut) ─────────────────────────────────────────────────────
   const [actionMode, setActionMode] = useState<ActionMode>(null);
-
-  // Trim range driven by waveform handles
   const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(0);
+  const [trimEnd, setTrimEnd]   = useState(0);
 
-  const handleExportWithFilters = () => {
-    onApplyEffects({
-      enable_noise_suppression: noiseSuppression,
-      bass_boost: bass,
-      treble_boost: treble,
-      volume_boost: volume,
-      mic_eq_enhancement: micEqEnhancement,
+  // ── Debounce ref ─────────────────────────────────────────────────────────────
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Load preview meta when file changes ──────────────────────────────────────
+  useEffect(() => {
+    // Reset to original file URL immediately
+    setActiveAudioUrl(toAudioUrl(selectedFile));
+    setHasPreview(false);
+    setIsProcessing(false);
+
+    // Reset filter state
+    setBass(0.5); setTreble(0.5); setVolume(0.5);
+    setNoiseSuppression(false); setMicEqEnhancement(false);
+
+    // Check if a preview session was saved for this file
+    AudioService.loadPreviewMeta(selectedFile).then((meta) => {
+      if (!meta) return;
+      // Restore saved filter params
+      setBass(meta.filters.bass_boost);
+      setTreble(meta.filters.treble_boost);
+      setVolume(meta.filters.volume_boost);
+      setNoiseSuppression(meta.filters.noise_suppression);
+      setMicEqEnhancement(meta.filters.mic_eq_enhancement);
+      // Load the saved preview WAV directly
+      setActiveAudioUrl(toAudioUrl(meta.preview_file));
+      setHasPreview(true);
+      setShowFilters(true); // expand panel so user sees restored settings
     });
-  };
+  }, [selectedFile]);
 
-  const getFileName = (path: string) => {
-    if (!path) return "";
-    const parts = path.split(/[/\\]/);
-    return parts[parts.length - 1];
-  };
+  // ── Core: trigger Rust preview generation (debounced) ────────────────────────
+  const schedulePreview = useCallback((filters: {
+    bass: number; treble: number; volume: number;
+    noiseSuppression: boolean; micEqEnhancement: boolean;
+  }) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
-  const handleConfirm = useCallback(async () => {
-    if (actionMode === "trim") {
-      await onTrim(trimStart, trimEnd);
-    } else if (actionMode === "cut") {
-      await onCut(trimStart, trimEnd);
+    const allFlat = filters.bass === 0.5 && filters.treble === 0.5 &&
+                    filters.volume === 0.5 && !filters.noiseSuppression && !filters.micEqEnhancement;
+
+    if (allFlat) {
+      // All filters neutral → revert to original, clear preview cache
+      setActiveAudioUrl(toAudioUrl(selectedFile));
+      setHasPreview(false);
+      AudioService.clearPreview(selectedFile);
+      return;
     }
+
+    debounceRef.current = setTimeout(async () => {
+      setIsProcessing(true);
+      try {
+        const previewPath = await AudioService.createPreview(selectedFile, {
+          enable_noise_suppression: filters.noiseSuppression,
+          bass_boost:               filters.bass,
+          treble_boost:             filters.treble,
+          volume_boost:             filters.volume,
+          mic_eq_enhancement:       filters.micEqEnhancement,
+        });
+        // Bust the URL so the audio element re-loads (add timestamp cache-buster)
+        setActiveAudioUrl(toAudioUrl(previewPath) + `?t=${Date.now()}`);
+        setHasPreview(true);
+      } catch (err) {
+        console.error("[VoiceDetailStudio] createPreview failed:", err);
+      } finally {
+        setIsProcessing(false);
+      }
+    }, PREVIEW_DEBOUNCE_MS);
+  }, [selectedFile]);
+
+  // ── Filter change handlers ────────────────────────────────────────────────────
+  // Each handler updates local state immediately (instant slider movement)
+  // and schedules a debounced Rust render.
+  const handleBassChange = (v: number) => {
+    setBass(v);
+    schedulePreview({ bass: v, treble, volume, noiseSuppression, micEqEnhancement });
+  };
+  const handleTrebleChange = (v: number) => {
+    setTreble(v);
+    schedulePreview({ bass, treble: v, volume, noiseSuppression, micEqEnhancement });
+  };
+  const handleVolumeChange = (v: number) => {
+    setVolume(v);
+    schedulePreview({ bass, treble, volume: v, noiseSuppression, micEqEnhancement });
+  };
+  const handleNoiseSuppressionChange = (v: boolean) => {
+    setNoiseSuppression(v);
+    schedulePreview({ bass, treble, volume, noiseSuppression: v, micEqEnhancement });
+  };
+  const handleMicEqChange = (v: boolean) => {
+    setMicEqEnhancement(v);
+    schedulePreview({ bass, treble, volume, noiseSuppression, micEqEnhancement: v });
+  };
+
+  // ── Reset all filters ─────────────────────────────────────────────────────────
+  const resetFilters = useCallback(async () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setBass(0.5); setTreble(0.5); setVolume(0.5);
+    setNoiseSuppression(false); setMicEqEnhancement(false);
+    setActiveAudioUrl(toAudioUrl(selectedFile));
+    setHasPreview(false);
+    await AudioService.clearPreview(selectedFile);
+  }, [selectedFile]);
+
+  // ── Export with current filters ───────────────────────────────────────────────
+  // Always bakes from the ORIGINAL file (not from preview) with current params.
+  const handleExport = useCallback(async () => {
+    await onApplyEffects({
+      enable_noise_suppression: noiseSuppression,
+      bass_boost:               bass,
+      treble_boost:             treble,
+      volume_boost:             volume,
+      mic_eq_enhancement:       micEqEnhancement,
+    });
+  }, [onApplyEffects, noiseSuppression, bass, treble, volume, micEqEnhancement]);
+
+  // ── Trim/Cut confirm ──────────────────────────────────────────────────────────
+  const handleConfirm = useCallback(async () => {
+    if (actionMode === "trim") await onTrim(trimStart, trimEnd);
+    else if (actionMode === "cut") await onCut(trimStart, trimEnd);
     setActionMode(null);
   }, [actionMode, trimStart, trimEnd, onTrim, onCut]);
 
   const handleCancel = () => setActionMode(null);
 
-  // Enter = confirm, Escape = cancel
   useEffect(() => {
     if (!actionMode) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Enter") { e.preventDefault(); handleConfirm(); }
+      if (e.key === "Enter")  { e.preventDefault(); handleConfirm(); }
       if (e.key === "Escape") { handleCancel(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [actionMode, handleConfirm]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  const getFileName = (path: string) => {
+    if (!path) return "";
+    return path.split(/[/\\]/).pop() ?? "";
+  };
 
   const formatMs = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -106,6 +218,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     return `${m}:${rem.toString().padStart(2, "0")}.${msRem.toString().padStart(3, "0").slice(0, 2)}`;
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="w-full flex flex-col gap-0 animate-fade-in">
       {/* Header */}
@@ -121,23 +234,35 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
           {getFileName(selectedFile)}
         </span>
+        {/* Preview badge */}
+        {hasPreview && !isProcessing && (
+          <span className="ml-auto px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+            RUST PREVIEW
+          </span>
+        )}
+        {isProcessing && (
+          <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+            RENDERING
+          </span>
+        )}
       </div>
 
-      {/* ── Waveform ── */}
-        <WaveformEditor
-          ref={waveformRef}
-          filePath={selectedFile}
-          audioUrl={audioUrl}
-          onTrim={onTrim}
-          editMode={actionMode}
-          onPlayStateChange={setIsPlaying}
-          filters={currentFilters}
-          onTrimRangeChange={(start, end) => {
-            setTrimStart(start);
-            setTrimEnd(end);
-          }}
-        />
-{/* Confirm bar — slides in when action is active */}
+      {/* Waveform — plays activeAudioUrl (original OR Rust preview) */}
+      <WaveformEditor
+        ref={waveformRef}
+        filePath={selectedFile}
+        audioUrl={activeAudioUrl}
+        onTrim={onTrim}
+        editMode={actionMode}
+        onPlayStateChange={setIsPlaying}
+        onTrimRangeChange={(start, end) => {
+          setTrimStart(start);
+          setTrimEnd(end);
+        }}
+      />
+
+      {/* Confirm bar — slides in when trim/cut is active */}
       <div
         className={`overflow-hidden transition-all duration-200 ease-out ${
           actionMode ? "max-h-16 opacity-100 mt-2" : "max-h-0 opacity-0"
@@ -177,9 +302,9 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           </div>
         </div>
       </div>
-      {/* ── Unified control row: playback + actions ── */}
+
+      {/* Playback controls */}
       <div className="flex items-center gap-2 mt-3 px-1">
-        {/* Playback controls */}
         <button
           onClick={() => waveformRef.current?.skipBackward()}
           className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 active:scale-90 transition-all cursor-pointer bg-slate-100 dark:bg-slate-800 rounded-full"
@@ -217,7 +342,6 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           </svg>
         </button>
 
-        {/* Divider */}
         <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1 flex-shrink-0" />
 
         {/* Trim */}
@@ -249,16 +373,15 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         </button>
       </div>
 
-      {/* Errors */}
+      {/* Error messages */}
       {statusMessage && statusMessage.toLowerCase().includes("error") && (
         <div className="mt-2 text-xs text-red-600 dark:text-red-400 font-semibold bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded-sm">
           {statusMessage}
         </div>
       )}
 
-      {/* ── Voice Filters (non-destructive, collapsible) ── */}
+      {/* Voice Filters */}
       <div className="mt-3">
-        {/* Toggle row with live badge */}
         <button
           onClick={() => setShowFilters((v) => !v)}
           className="flex items-center gap-2 w-full text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors py-2 select-none"
@@ -266,54 +389,52 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`} />
           <Wand2 className="w-3.5 h-3.5" />
           Voice Filters
-          {isFiltersActive && applyFilters && (
-            <span className="ml-1 px-1.5 py-0.5 rounded-sm bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 text-[10px] font-bold tracking-wide">
-              LIVE PREVIEW
+          {isFiltersActive && hasPreview && !isProcessing && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide">
+              ACTIVE
             </span>
           )}
-          {isFiltersActive && !applyFilters && (
-            <span className="ml-1 px-1.5 py-0.5 rounded-sm bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-wide">
-              BYPASSED
+          {isProcessing && (
+            <span className="ml-1 flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              RENDERING…
             </span>
           )}
         </button>
 
-        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[580px] opacity-100" : "max-h-0 opacity-0"}`}>
+        <div className={`overflow-hidden transition-all duration-300 ease-out ${showFilters ? "max-h-[560px] opacity-100" : "max-h-0 opacity-0"}`}>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-sm p-4 flex flex-col gap-4">
 
-            {/* Master Toggle */}
-            <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-700/50">
-              <input type="checkbox" id="master-toggle" checked={applyFilters}
-                onChange={(e) => setApplyFilters(e.target.checked)}
-                className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
-              <label htmlFor="master-toggle" className="text-xs text-slate-900 dark:text-slate-100 cursor-pointer select-none font-bold">
-                Enable Filters (Live)
-              </label>
-              <span className="text-[10px] text-slate-400 ml-auto">Uncheck to hear original</span>
-            </div>
-
-            {/* Non-destructive notice */}
+            {/* Info notice */}
             <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-              Filters are applied via <strong>Web Audio API</strong> for live preview only.
-              Your original file is never modified. Use <em>Export</em> to bake them to a copy.
+              Filters are processed by the <strong>Rust DSP engine</strong> — what you hear
+              is exactly what gets exported. No engine mismatch.
             </p>
 
-            {/* Noise suppression & Mic EQ (Toggles) */}
+            {/* Noise suppression & Mic EQ */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2.5">
-                <input type="checkbox" id="noise-suppression" checked={noiseSuppression}
-                  onChange={(e) => setNoiseSuppression(e.target.checked)}
-                  className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
+                <input
+                  type="checkbox"
+                  id="noise-suppression"
+                  checked={noiseSuppression}
+                  onChange={(e) => handleNoiseSuppressionChange(e.target.checked)}
+                  className="cursor-pointer w-4 h-4 rounded accent-violet-500"
+                />
                 <label htmlFor="noise-suppression" className="text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none font-medium">
-                  Noise Gate (live)
+                  Noise Gate
                 </label>
-                <span className="text-[10px] text-slate-400 ml-auto">Full RNNoise on export</span>
+                <span className="text-[10px] text-slate-400 ml-auto">RNNoise-style gate</span>
               </div>
-              
+
               <div className="flex items-center gap-2.5">
-                <input type="checkbox" id="mic-eq" checked={micEqEnhancement}
-                  onChange={(e) => setMicEqEnhancement(e.target.checked)}
-                  className="cursor-pointer w-4 h-4 rounded accent-violet-500" />
+                <input
+                  type="checkbox"
+                  id="mic-eq"
+                  checked={micEqEnhancement}
+                  onChange={(e) => handleMicEqChange(e.target.checked)}
+                  className="cursor-pointer w-4 h-4 rounded accent-violet-500"
+                />
                 <label htmlFor="mic-eq" className="text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none font-medium">
                   Low Quality Mic Fix
                 </label>
@@ -325,71 +446,79 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Bass Boost (Warmth)</label>
-                <div className="flex items-center gap-1.5">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
-                    bass === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
-                  }`}>
-                    {bass === 0.5 ? "Flat" : bass > 0.5 ? `+${Math.round((bass - 0.5) * 30)}dB` : `${Math.round((bass - 0.5) * 30)}dB`}
-                  </span>
-                </div>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
+                  bass === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
+                }`}>
+                  {bass === 0.5 ? "Flat" : bass > 0.5 ? `+${Math.round((bass - 0.5) * 30)}dB` : `${Math.round((bass - 0.5) * 30)}dB`}
+                </span>
               </div>
-              <input type="range" min="0" max="1" step="0.025" value={bass}
-                onChange={(e) => setBass(Number(e.target.value))}
-                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
+              <input
+                type="range" min="0" max="1" step="0.025" value={bass}
+                onChange={(e) => handleBassChange(Number(e.target.value))}
+                disabled={isProcessing}
+                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none disabled:opacity-50"
+              />
             </div>
 
             {/* Treble Boost */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Treble Boost (Clarity)</label>
-                <div className="flex items-center gap-1.5">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
-                    treble === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
-                  }`}>
-                    {treble === 0.5 ? "Flat" : treble > 0.5 ? `+${Math.round((treble - 0.5) * 30)}dB` : `${Math.round((treble - 0.5) * 30)}dB`}
-                  </span>
-                </div>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
+                  treble === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
+                }`}>
+                  {treble === 0.5 ? "Flat" : treble > 0.5 ? `+${Math.round((treble - 0.5) * 30)}dB` : `${Math.round((treble - 0.5) * 30)}dB`}
+                </span>
               </div>
-              <input type="range" min="0" max="1" step="0.025" value={treble}
-                onChange={(e) => setTreble(Number(e.target.value))}
-                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
+              <input
+                type="range" min="0" max="1" step="0.025" value={treble}
+                onChange={(e) => handleTrebleChange(Number(e.target.value))}
+                disabled={isProcessing}
+                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none disabled:opacity-50"
+              />
             </div>
 
-            {/* Volume Boost */}
+            {/* Volume Gain */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Volume Gain</label>
-                <div className="flex items-center gap-1.5">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
-                    volume === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
-                  }`}>
-                    {volume === 0.5 ? "1x" : volume > 0.5 ? `${(1.0 + (volume - 0.5) * 6.0).toFixed(1)}x` : `${(0.25 + (volume / 0.5) * 0.75).toFixed(1)}x`}
-                  </span>
-                </div>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${
+                  volume === 0.5 ? "bg-slate-200 dark:bg-slate-700 text-slate-500" : "bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
+                }`}>
+                  {volume === 0.5 ? "1x" : volume > 0.5 ? `${(1.0 + (volume - 0.5) * 6.0).toFixed(1)}x` : `${(0.25 + (volume / 0.5) * 0.75).toFixed(1)}x`}
+                </span>
               </div>
-              <input type="range" min="0" max="1" step="0.025" value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none" />
+              <input
+                type="range" min="0" max="1" step="0.025" value={volume}
+                onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                disabled={isProcessing}
+                className="w-full accent-violet-500 cursor-pointer h-1 bg-slate-200 dark:bg-slate-700 rounded-sm appearance-none disabled:opacity-50"
+              />
             </div>
 
             {/* Action row */}
             <div className="flex gap-2">
               <button
                 onClick={resetFilters}
-                disabled={!isFiltersActive}
+                disabled={!isFiltersActive || isProcessing}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-bold cursor-pointer transition-all active:scale-95 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Reset all filters to flat/neutral"
+                title="Reset all filters and revert to original file"
               >
                 <RotateCcw className="w-3 h-3" />
                 Reset
               </button>
               <button
-                onClick={handleExportWithFilters}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-sm text-xs font-bold cursor-pointer transition-all active:scale-95 bg-violet-600 hover:bg-violet-500 text-white"
+                onClick={handleExport}
+                disabled={isProcessing}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-sm text-xs font-bold cursor-pointer transition-all active:scale-95 bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 title="Bake filters into a new file — original is never modified"
               >
-                <Download className="w-3.5 h-3.5" />
-                Export with Filters
+                {isProcessing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                {isProcessing ? "Processing…" : "Export with Filters"}
               </button>
             </div>
           </div>

@@ -8,7 +8,8 @@ use commands::{
     RecorderState, list_audio_devices, start_audio_recording, stop_audio_recording, 
     list_recorded_files, trim_audio, apply_voice_effects, cut_audio_segment, 
     pause_audio_recording, resume_audio_recording, discard_audio_recording,
-    get_live_audio_devices, start_live_mic, stop_live_mic, update_live_filters
+    get_live_audio_devices, start_live_mic, stop_live_mic, update_live_filters,
+    create_preview, load_preview_meta, clear_preview
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -34,7 +35,10 @@ pub fn run() {
             get_live_audio_devices,
             start_live_mic,
             stop_live_mic,
-            update_live_filters
+            update_live_filters,
+            create_preview,
+            load_preview_meta,
+            clear_preview
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

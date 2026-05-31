@@ -21,6 +21,24 @@ export interface VoiceEffectOptions {
   mic_eq_enhancement: boolean;
 }
 
+/** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams */
+export interface FilterParams {
+  bass_boost: number;
+  treble_boost: number;
+  volume_boost: number;
+  noise_suppression: boolean;
+  mic_eq_enhancement: boolean;
+}
+
+/** Preview session metadata returned by load_preview_meta */
+export interface PreviewMeta {
+  version: number;
+  source_file: string;
+  preview_file: string;
+  filters: FilterParams;
+}
+
+
 /**
  * Helper to check if the application is running inside a native Tauri WebView environment.
  * If running in a standard web browser, it returns false.
@@ -216,7 +234,6 @@ export const AudioService = {
         "[BROWSER_PREVIEW_MODE] mock_voice_recording_2.wav",
       ];
     }
-
     try {
       return await invoke<string[]>("list_recorded_files");
     } catch (error) {
@@ -224,4 +241,60 @@ export const AudioService = {
       throw new Error(String(error));
     }
   },
+
+  /**
+   * Processes the source WAV through the Rust DSP engine, writes a preview WAV + meta sidecar,
+   * and returns the absolute path to the preview WAV (use convertFileSrc() on the frontend).
+   * This is the ONLY engine used — what the user hears IS what gets exported.
+   */
+  async createPreview(
+    filePath: string,
+    options: VoiceEffectOptions,
+  ): Promise<string> {
+    if (!isTauri()) {
+      console.warn("Running in standard browser. Skipping preview creation.");
+      return filePath; // browser fallback: play original
+    }
+    try {
+      return await invoke<string>("create_preview", {
+        filePath,
+        enableNoiseSuppression: options.enable_noise_suppression,
+        bassBoost:              options.bass_boost,
+        trebleBoost:            options.treble_boost,
+        volumeBoost:            options.volume_boost,
+        micEqEnhancement:       options.mic_eq_enhancement,
+      });
+    } catch (error) {
+      console.error("Failed to create preview:", error);
+      throw new Error(String(error));
+    }
+  },
+
+  /**
+   * Loads the saved preview session for a source file, if one exists.
+   * Returns null when no preview has been created yet.
+   */
+  async loadPreviewMeta(filePath: string): Promise<PreviewMeta | null> {
+    if (!isTauri()) return null;
+    try {
+      return await invoke<PreviewMeta | null>("load_preview_meta", { filePath });
+    } catch (error) {
+      console.error("Failed to load preview meta:", error);
+      return null;
+    }
+  },
+
+  /**
+   * Deletes the preview WAV and meta sidecar for a source file.
+   * Safe to call even when no preview exists.
+   */
+  async clearPreview(filePath: string): Promise<void> {
+    if (!isTauri()) return;
+    try {
+      await invoke("clear_preview", { filePath });
+    } catch (error) {
+      console.error("Failed to clear preview:", error);
+    }
+  },
 };
+

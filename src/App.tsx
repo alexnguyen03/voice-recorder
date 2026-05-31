@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAudioRecorder } from "./hooks/useAudioRecorder";
 import { AudioService } from "./services/audioService";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { RecordingPage } from "./pages/RecordingPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { VoiceDetailStudio } from "./pages/VoiceDetailStudio";
 import { SettingsPage } from "./pages/SettingsPage";
 import { LiveMicStudio } from "./pages/LiveMicStudio";
 import "./App.css";
+
 
 export type ThemeType = "light" | "dark" | "system";
 
@@ -72,14 +72,7 @@ function App() {
     }
   }, [theme]);
 
-  const isTauri = typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined;
 
-  // Resolve audio URL for details preview player
-  const audioUrl = selectedFile
-    ? isTauri
-      ? convertFileSrc(selectedFile)
-      : "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-    : "";
 
   // Helper: Get base filename from absolute path
   const getFileName = (path: string): string => {
@@ -317,7 +310,6 @@ function App() {
             ) : (
               <VoiceDetailStudio
                 selectedFile={selectedFile}
-                audioUrl={audioUrl}
                 onBack={() => {
                   setSelectedFile(null);
                   setStatusMessage("");

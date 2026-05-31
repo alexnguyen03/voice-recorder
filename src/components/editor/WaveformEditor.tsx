@@ -8,20 +8,6 @@ export interface WaveformEditorHandle {
   isPlaying: () => boolean;
 }
 
-/** Non-destructive audio filter settings for live Web Audio API preview */
-export interface AudioFilters {
-  /** 0.0–1.0 where 0.5 = neutral (0 dB gain) */
-  bassBoost: number;
-  /** 0.0–1.0 where 0.5 = neutral (0 dB gain) */
-  trebleBoost: number;
-  /** 0.0-1.0 where 0.5 = neutral (1x), 1.0 = +12dB, 0.0 = -12dB */
-  volumeBoost: number;
-  /** Highpass filter at 85Hz to cut off low-quality mic rumble and wind noise */
-  micEqEnhancement: boolean;
-  /** Simple gate/compressor noise reduction */
-  noiseSuppression: boolean;
-}
-
 interface WaveformEditorProps {
   filePath: string;
   audioUrl: string;
@@ -37,8 +23,6 @@ interface WaveformEditorProps {
   editMode?: 'trim' | 'cut' | null;
   /** Fired when play state changes */
   onPlayStateChange?: (playing: boolean) => void;
-  /** Live preview filters applied via Web Audio API — never touches original file */
-  filters?: AudioFilters;
 }
 
 /**
@@ -53,7 +37,6 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   onTrimRangeChange,
   editMode = null,
   onPlayStateChange,
-  filters,
 }, ref) {
   const [duration, setDuration] = useState<number>(20); // default to 20 seconds
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -72,18 +55,10 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const draggingHandleRef = useRef<'start' | 'end' | null>(null);
   const editModeRef = useRef<'trim' | 'cut' | null>(null);
 
-  const audioCtxRef   = useRef<AudioContext | null>(null);
+  // Web Audio API nodes — player-only graph (source → analyser → destination)
+  // All EQ/DSP processing is done by the Rust engine before the file reaches this player.
+  const audioCtxRef     = useRef<AudioContext | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
-  const gainNodeRef   = useRef<GainNode | null>(null);
-  const rumbleNodeRef = useRef<BiquadFilterNode | null>(null);
-  const rumbleNode2Ref = useRef<BiquadFilterNode | null>(null);
-  const rumbleNode3Ref = useRef<BiquadFilterNode | null>(null);
-  const hissNodeRef   = useRef<BiquadFilterNode | null>(null);
-  const notch50NodeRef = useRef<BiquadFilterNode | null>(null);
-  const notch60NodeRef = useRef<BiquadFilterNode | null>(null);
-  const bassNodeRef   = useRef<BiquadFilterNode | null>(null);
-  const trebleNodeRef = useRef<BiquadFilterNode | null>(null);
-  const noiseGateNodeRef = useRef<AudioWorkletNode | null>(null);
 
   // High-density bar count (180 points for a premium professional look)
   const numBars = 180;
@@ -108,18 +83,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   useEffect(() => {
     return () => {
       audioCtxRef.current?.close();
-      audioCtxRef.current = null;
+      audioCtxRef.current  = null;
       analyserNodeRef.current = null;
-      gainNodeRef.current = null;
-      rumbleNodeRef.current = null;
-      rumbleNode2Ref.current = null;
-      rumbleNode3Ref.current = null;
-      hissNodeRef.current = null;
-      notch50NodeRef.current = null;
-      notch60NodeRef.current = null;
-      bassNodeRef.current = null;
-      trebleNodeRef.current = null;
-      noiseGateNodeRef.current = null;
     };
   }, [audioUrl]);
 
@@ -149,38 +114,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     };
   }, [audioUrl]);
 
-  // Re-apply filter params whenever the filters prop changes
-  useEffect(() => {
-    if (!filters) return;
-    
-    // Volume Boost (0.0 to 1.0 mapped to 0.25x to 4x)
-    if (gainNodeRef.current) {
-      const vol = filters.volumeBoost ?? 0.5;
-      gainNodeRef.current.gain.value = vol >= 0.5 ? 1.0 + (vol - 0.5) * 6.0 : 0.25 + (vol / 0.5) * 0.75;
-    }
-      
-    // Mic EQ Enhancement (Highpass at 85Hz, Lowpass at 9000Hz, Notches at 50Hz/60Hz)
-    if (rumbleNodeRef.current) rumbleNodeRef.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
-    if (rumbleNode2Ref.current) rumbleNode2Ref.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
-    if (rumbleNode3Ref.current) rumbleNode3Ref.current.frequency.value = filters.micEqEnhancement ? 85 : 0;
-    if (hissNodeRef.current) hissNodeRef.current.frequency.value = filters.micEqEnhancement ? 9000 : 24000;
-    if (notch50NodeRef.current) notch50NodeRef.current.frequency.value = filters.micEqEnhancement ? 50 : 24000;
-    if (notch60NodeRef.current) notch60NodeRef.current.frequency.value = filters.micEqEnhancement ? 60 : 24000;
-    
-    // Bass: lowshelf at 200 Hz, 0.5 = 0 dB, range ±15 dB
-    if (bassNodeRef.current)
-      bassNodeRef.current.gain.value = (filters.bassBoost - 0.5) * 30;
-    // Treble: highshelf at 4 kHz
-    if (trebleNodeRef.current)
-      trebleNodeRef.current.gain.value = (filters.trebleBoost - 0.5) * 30;
-    // Noise gate: send toggle + sensitivity message to AudioWorklet processor
-    if (noiseGateNodeRef.current) {
-      noiseGateNodeRef.current.port.postMessage({
-        enabled: filters.noiseSuppression,
-        sensitivity: 0.65, // VoiceDetailStudio doesn't expose sensitivity yet; use safe default
-      });
-    }
-  }, [filters]);
+
 
   // Helper: Format seconds to MM:SS
   const formatTime = (secs: number): string => {
@@ -644,100 +578,25 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   const togglePlay = () => {
     if (!audioRef.current) return;
 
-    // Bootstrap Web Audio graph on first play (requires user gesture)
+    // Bootstrap a minimal Web Audio graph on first play (requires a user gesture).
+    // The graph is intentionally filter-free — all DSP is done by the Rust engine.
+    // Only an AnalyserNode is inserted so the spectrum visualizer can read data.
     if (!audioCtxRef.current) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
         const ctx = new AudioCtx() as AudioContext;
         audioCtxRef.current = ctx;
 
-        const source = ctx.createMediaElementSource(audioRef.current);
-        
-        const gain = ctx.createGain();
-        const vol = filters?.volumeBoost ?? 0.5;
-        gain.gain.value = vol >= 0.5 ? 1.0 + (vol - 0.5) * 6.0 : 0.25 + (vol / 0.5) * 0.75;
-        gainNodeRef.current = gain;
-        
-        const rumble = ctx.createBiquadFilter();
-        rumble.type = 'highpass';
-        rumble.frequency.value = filters?.micEqEnhancement ? 85 : 0;
-        rumble.Q.value = 0.707;
-        rumbleNodeRef.current = rumble;
-
-        const rumble2 = ctx.createBiquadFilter();
-        rumble2.type = 'highpass';
-        rumble2.frequency.value = filters?.micEqEnhancement ? 85 : 0;
-        rumble2.Q.value = 0.707;
-        rumbleNode2Ref.current = rumble2;
-
-        const rumble3 = ctx.createBiquadFilter();
-        rumble3.type = 'highpass';
-        rumble3.frequency.value = filters?.micEqEnhancement ? 85 : 0;
-        rumble3.Q.value = 0.707;
-        rumbleNode3Ref.current = rumble3;
-
-        const hiss = ctx.createBiquadFilter();
-        hiss.type = 'lowpass';
-        hiss.frequency.value = filters?.micEqEnhancement ? 9000 : 24000;
-        hiss.Q.value = 0.707;
-        hissNodeRef.current = hiss;
-
-        const notch50 = ctx.createBiquadFilter();
-        notch50.type = 'notch';
-        notch50.frequency.value = filters?.micEqEnhancement ? 50 : 24000;
-        notch50.Q.value = 10.0;
-        notch50NodeRef.current = notch50;
-
-        const notch60 = ctx.createBiquadFilter();
-        notch60.type = 'notch';
-        notch60.frequency.value = filters?.micEqEnhancement ? 60 : 24000;
-        notch60.Q.value = 10.0;
-        notch60NodeRef.current = notch60;
-
-        const bass = ctx.createBiquadFilter();
-        bass.type = 'lowshelf';
-        bass.frequency.value = 200;
-        bass.gain.value = filters ? (filters.bassBoost - 0.5) * 30 : 0;
-        bassNodeRef.current = bass;
-
-        const treble = ctx.createBiquadFilter();
-        treble.type = 'highshelf';
-        treble.frequency.value = 4000;
-        treble.gain.value = filters ? (filters.trebleBoost - 0.5) * 30 : 0;
-        trebleNodeRef.current = treble;
-
+        const source  = ctx.createMediaElementSource(audioRef.current);
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 2048;
+        analyser.fftSize               = 2048;
         analyser.smoothingTimeConstant = 0.85;
         analyserNodeRef.current = analyser;
 
-        // Build the EQ chain (noise gate node inserted after worklet loads)
-        const eqChain = source
-          .connect(rumble).connect(rumble2).connect(rumble3).connect(hiss)
-          .connect(notch50).connect(notch60)
-          .connect(bass).connect(treble)
-          .connect(gain);
+        // Simple chain: source → analyser → speakers (zero EQ processing)
+        source.connect(analyser).connect(ctx.destination);
 
-        // Load AudioWorklet noise gate async — start playback only after graph is fully wired
-        ctx.audioWorklet.addModule('/noise-gate-processor.js').then(() => {
-          const noiseGate = new AudioWorkletNode(ctx, 'noise-gate-processor');
-          // Send initial enabled state and sensitivity together
-          noiseGate.port.postMessage({
-            enabled: filters?.noiseSuppression ?? false,
-            sensitivity: 0.65, // default; will be overridden when filters prop updates
-          });
-          noiseGateNodeRef.current = noiseGate;
-          // EQ chain → noiseGate → analyser → speakers
-          eqChain.connect(noiseGate).connect(analyser).connect(ctx.destination);
-          startAudioPlayback();
-        }).catch((err) => {
-          // Worklet unavailable — connect without gate and play anyway
-          console.warn('NoiseGate AudioWorklet failed, bypassing:', err);
-          eqChain.connect(analyser).connect(ctx.destination);
-          startAudioPlayback();
-        });
-
-        // Return early — startAudioPlayback() called inside promise callbacks above
+        startAudioPlayback();
         return;
       }
     }
