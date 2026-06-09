@@ -54,8 +54,8 @@ export const RecordingPage: React.FC<RecordingPageProps> = ({
           className="w-4 h-4 accent-blue-500 disabled:cursor-not-allowed"
         />
         <span className="flex flex-col">
-          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Voice Enhance</span>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500">Noise gate, mic cleanup, compressor</span>
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Monitor Cleanup View</span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500">Raw recording stays untouched; enhance after saving</span>
         </span>
       </label>
 

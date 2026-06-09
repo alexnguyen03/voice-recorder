@@ -57,6 +57,10 @@ pub trait SeparatorStrategy: Send + Sync {
     fn hop_length(&self) -> usize;
     fn chunk_frames(&self) -> usize;
     fn overlap(&self)    -> f32;
+    /// Number of frequency bins the model input expects.
+    /// Default = n_fft / 2 (drops Nyquist — MDX-Net convention).
+    /// Override if your model uses n_fft / 2 + 1 (librosa convention).
+    fn model_freq_bins(&self) -> usize { self.n_fft() / 2 }
 
     fn model_name(&self) -> &'static str;
 }

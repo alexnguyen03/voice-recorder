@@ -42,6 +42,11 @@ export interface VoiceEffectOptions {
   ml_voice_layers_enabled: boolean;
   reduce_sibilance: boolean;
   smooth_voice_cutoff: boolean;
+  // V1 Voice Enhance Engine
+  enhance_mode: "fast_clean" | "best_quality";
+  preset: "clean_voice" | "podcast_warm" | "meeting_clear" | "low_mic_rescue" | "noisy_room_rescue" | null;
+  enhance_strength: number;
+  natural_clean_balance: number;
 }
 
 /** Result of vocal source separation. */
@@ -59,6 +64,23 @@ export interface RecordingInfo {
   duration_secs:    number;
   file_size_bytes:  number;
   created_at_secs:  number; // Unix epoch seconds
+  analysis?: AudioAnalysis | null;
+}
+
+export type InputQuality = "poor" | "okay" | "good";
+
+export interface AudioAnalysis {
+  peak_level:        number;
+  rms_level:         number;
+  clipping_count:    number;
+  clipping_ratio:    number;
+  silence_ratio:     number;
+  noise_floor:       number;
+  speech_ratio:      number;
+  duration_secs:     number;
+  input_quality:     InputQuality;
+  noise_level:       InputQuality;
+  clipping_detected: boolean;
 }
 
 /** Filter parameters stored in the preview sidecar — mirrors Rust FilterParams. */
@@ -83,6 +105,10 @@ export interface FilterParams {
   mid_cut_q: number;
   mid_cut_gain_db: number;
   de_hiss_enabled: boolean;
+  enhance_mode?: "fast_clean" | "best_quality";
+  preset?: "clean_voice" | "podcast_warm" | "meeting_clear" | "low_mic_rescue" | "noisy_room_rescue" | null;
+  enhance_strength?: number;
+  natural_clean_balance?: number;
 }
 
 /** Preview session metadata returned by load_preview_meta. */
@@ -125,6 +151,11 @@ const toCommandArgs = (filePath: string, o: VoiceEffectOptions) => ({
   mlVoiceLayersEnabled:   o.ml_voice_layers_enabled,
   reduceSibilance:        o.reduce_sibilance,
   smoothVoiceCutoff:      o.smooth_voice_cutoff,
+  // V1 Voice Enhance Engine
+  enhanceMode:            o.enhance_mode,
+  preset:                 o.preset,
+  enhanceStrength:        o.enhance_strength,
+  naturalCleanBalance:    o.natural_clean_balance,
 });
 
 export const AudioService = {
@@ -249,5 +280,11 @@ export const AudioService = {
     if (!isTauri() || filePaths.length === 0) return [];
     try { return await invoke<RecordingInfo[]>("get_recordings_info", { filePaths }); }
     catch (e) { return []; }
+  },
+
+  async analyzeAudio(filePath: string): Promise<AudioAnalysis | null> {
+    if (!isTauri()) return null;
+    try { return await invoke<AudioAnalysis>("analyze_audio", { filePath }); }
+    catch (e) { throw new Error(String(e)); }
   },
 };

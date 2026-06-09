@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crate::core::models::{AppError, AudioBuffer, DeviceInfo, ErrorCode, RecordConfig};
 use crate::core::traits::AudioRecorder;
-use crate::infra::dsp_engine::LiveDspSession;
 
 /// Concrete implementation of AudioRecorder using the cross-platform `cpal` crate.
 /// Safely captures microphone stream on an native OS thread and pipes it to a shared float buffer.
@@ -52,31 +51,12 @@ impl CpalRecorder {
         samples.iter().fold(0.0_f32, |max, sample| max.max(sample.abs()))
     }
 
-    fn process_input_chunk<T>(
-        data: &[T],
-        channels: usize,
-        voice_enhance: bool,
-        dsp: &Option<Arc<Mutex<LiveDspSession>>>,
-    ) -> Vec<f32>
+    fn process_input_chunk<T>(data: &[T], channels: usize) -> Vec<f32>
     where
         T: cpal::Sample,
         f32: cpal::FromSample<T>,
     {
-        let input = Self::collect_samples(data, channels, voice_enhance);
-
-        if !voice_enhance {
-            return input;
-        }
-
-        let mut processed = vec![0.0_f32; input.len()];
-        if let Some(dsp) = dsp {
-            if let Ok(mut session) = dsp.lock() {
-                session.process_chunk(&input, &mut processed);
-                return processed;
-            }
-        }
-
-        input
+        Self::collect_samples(data, channels, false)
     }
 }
 
@@ -153,24 +133,7 @@ impl AudioRecorder for CpalRecorder {
         let sample_rate = supported_config.sample_rate().0;
         let channels = supported_config.channels();
         let sample_format = supported_config.sample_format();
-        let voice_enhance = config.voice_enhance;
-        let output_channels = if voice_enhance { 1 } else { channels };
-
-        let dsp_session = if voice_enhance {
-            let mut session = LiveDspSession::new();
-            session.update_filters(
-                sample_rate as f32,
-                0.50,
-                0.56,
-                0.55,
-                true,
-                true,
-                0.55,
-            );
-            Some(Arc::new(Mutex::new(session)))
-        } else {
-            None
-        };
+        let output_channels = channels;
 
         // Clear shared recording buffer securely
         {
@@ -189,17 +152,13 @@ impl AudioRecorder for CpalRecorder {
         let on_amp_f32 = on_amplitude.clone();
         let on_amp_i16 = on_amplitude.clone();
         let on_amp_u16 = on_amplitude.clone();
-        let dsp_f32 = dsp_session.clone();
-        let dsp_i16 = dsp_session.clone();
-        let dsp_u16 = dsp_session.clone();
-
         // Construct input stream based on supported system format
         let stream = match sample_format {
             cpal::SampleFormat::F32 => {
                 device.build_input_stream(
                     &supported_config.into(),
                     move |data: &[f32], _: &_| {
-                        let processed = Self::process_input_chunk(data, channels as usize, voice_enhance, &dsp_f32);
+                        let processed = Self::process_input_chunk(data, channels as usize);
                         if let Ok(mut buf) = shared_buffer.lock() {
                             buf.extend_from_slice(&processed);
                         }
@@ -215,7 +174,7 @@ impl AudioRecorder for CpalRecorder {
                 device.build_input_stream(
                     &supported_config.into(),
                     move |data: &[i16], _: &_| {
-                        let processed = Self::process_input_chunk(data, channels as usize, voice_enhance, &dsp_i16);
+                        let processed = Self::process_input_chunk(data, channels as usize);
                         if let Ok(mut buf) = shared_buffer.lock() {
                             buf.extend_from_slice(&processed);
                         }
@@ -231,7 +190,7 @@ impl AudioRecorder for CpalRecorder {
                 device.build_input_stream(
                     &supported_config.into(),
                     move |data: &[u16], _: &_| {
-                        let processed = Self::process_input_chunk(data, channels as usize, voice_enhance, &dsp_u16);
+                        let processed = Self::process_input_chunk(data, channels as usize);
                         if let Ok(mut buf) = shared_buffer.lock() {
                             buf.extend_from_slice(&processed);
                         }
@@ -265,7 +224,7 @@ impl AudioRecorder for CpalRecorder {
             sample_rate,
             channels: output_channels,
             bit_depth: 16,
-            voice_enhance,
+            voice_enhance: false,
         });
 
         Ok(())

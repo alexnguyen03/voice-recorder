@@ -1,6 +1,7 @@
 import React from "react";
-import { ChevronDown, Download, Loader2, RotateCcw, Wand2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, Loader2, RotateCcw, Wand2 } from "lucide-react";
 import { VoiceFilterState } from "../../hooks/useVoiceFilters";
+import { AudioAnalysis, InputQuality } from "../../services/audioService";
 import { NoiseWindGroup }    from "./filter-groups/NoiseWindGroup";
 import { BreathPlosiveGroup } from "./filter-groups/BreathPlosiveGroup";
 import { EqToneGroup }       from "./filter-groups/EqToneGroup";
@@ -18,6 +19,7 @@ interface VoiceFiltersPanelProps {
   updateFilters: (patch: Partial<VoiceFilterState>) => void;
   resetFilters: () => Promise<void>;
   exportWithFilters: () => Promise<void>;
+  analysis: AudioAnalysis | null;
 }
 
 /**
@@ -43,6 +45,7 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
   updateFilters,
   resetFilters,
   exportWithFilters,
+  analysis,
 }) => {
   const totalActive = [
     filters.hum_removal_enabled,
@@ -59,6 +62,10 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
     filters.ml_voice_layers_enabled,
     filters.reduce_sibilance,
     filters.smooth_voice_cutoff,
+    filters.enhance_mode === "best_quality",
+    filters.preset !== null,
+    filters.enhance_strength !== 0.5,
+    filters.natural_clean_balance !== 0.5,
   ].filter(Boolean).length;
 
   return (
@@ -113,6 +120,8 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
               — 10-stage pipeline. What you hear = what gets exported.
             </p>
           </div>
+
+          <InputAnalysisStrip analysis={analysis} />
 
           {/* ── Preset quick-apply bar ─────────────────────────────── */}
           <VoicePresetsGroup
@@ -175,6 +184,44 @@ export const VoiceFiltersPanel: React.FC<VoiceFiltersPanelProps> = ({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const qualityText = (q: InputQuality): string =>
+  q === "good" ? "Good" : q === "okay" ? "Okay" : "Poor";
+
+const qualityClass = (q: InputQuality): string =>
+  q === "good"
+    ? "text-emerald-600 dark:text-emerald-400"
+    : q === "okay"
+    ? "text-amber-600 dark:text-amber-400"
+    : "text-red-600 dark:text-red-400";
+
+const InputAnalysisStrip: React.FC<{ analysis: AudioAnalysis | null }> = ({ analysis }) => {
+  if (!analysis) return null;
+  const clipped = analysis.clipping_detected;
+  return (
+    <div className="grid grid-cols-3 gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-700/60 bg-slate-50/60 dark:bg-slate-900/30">
+      <div className="min-w-0">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Input</p>
+        <p className={`text-[11px] font-bold ${qualityClass(analysis.input_quality)}`}>
+          {qualityText(analysis.input_quality)}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Noise</p>
+        <p className={`text-[11px] font-bold ${qualityClass(analysis.noise_level)}`}>
+          {qualityText(analysis.noise_level)}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Clipping</p>
+        <p className={`flex items-center gap-1 text-[11px] font-bold ${clipped ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+          {clipped && <AlertTriangle className="w-3 h-3" />}
+          {clipped ? `${analysis.clipping_count}` : "None"}
+        </p>
       </div>
     </div>
   );

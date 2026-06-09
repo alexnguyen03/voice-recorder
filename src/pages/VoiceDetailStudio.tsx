@@ -4,7 +4,7 @@ import { WaveformEditor, WaveformEditorHandle } from "../components/editor/Wavef
 import { VoiceFiltersPanel } from "../components/editor/VoiceFiltersPanel";
 import { VocalSeparationPanel } from "../components/editor/VocalSeparationPanel";
 import { useVoiceFilters } from "../hooks/useVoiceFilters";
-import { VoiceEffectOptions } from "../services/audioService";
+import { AudioAnalysis, AudioService, VoiceEffectOptions } from "../services/audioService";
 
 interface VoiceDetailStudioProps {
   selectedFile: string;
@@ -31,6 +31,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  const [analysis, setAnalysis] = useState<AudioAnalysis | null>(null);
   // When the user clicks "Edit Vocals with Filters" we swap the filter source
   // to the separated vocals stem without changing the waveform / player.
   const [filterSourceFile, setFilterSourceFile] = useState(selectedFile);
@@ -51,6 +52,13 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   // Reset filterSourceFile whenever the user switches to a different recording
   useEffect(() => {
     setFilterSourceFile(selectedFile);
+    setAnalysis(null);
+    AudioService.analyzeAudio(selectedFile)
+      .then(setAnalysis)
+      .catch(err => {
+        console.error("[VoiceDetailStudio] analyzeAudio failed:", err);
+        setAnalysis(null);
+      });
   }, [selectedFile]);
 
   const handleUseVocals = (vocalsPath: string) => {
@@ -149,6 +157,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
         updateFilters={updateFilters}
         resetFilters={resetFilters}
         exportWithFilters={exportWithFilters}
+        analysis={analysis}
       />
 
       <VocalSeparationPanel

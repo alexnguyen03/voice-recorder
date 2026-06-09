@@ -40,7 +40,7 @@ export const VocalCleanupGroup: React.FC<Props> = ({ filters, disabled, updateFi
         <div className="flex flex-col gap-2 px-1">
           <Toggle
             label="Main Vocal Focus"
-            helper="Spectral gate isolates voice — downloads model on first use"
+            helper="Deterministic spectral cleanup; future AI runtime hook"
             checked={filters.ml_voice_layers_enabled}
             disabled={disabled}
             onChange={v => updateFilters({ ml_voice_layers_enabled: v })}

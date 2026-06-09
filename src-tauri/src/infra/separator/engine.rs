@@ -53,67 +53,72 @@ impl SeparationEngine {
         let stft       = StftHelper::new(n_fft, hop_length);
         let stft_out   = stft.stft_stereo(&resampled);
 
-        let freq_bins    = stft_out.freq_bins;
-        let frames       = stft_out.frames;
-        let chunk_frames = self.strategy.chunk_frames();
-        let overlap      = self.strategy.overlap();
+        let freq_bins       = stft_out.freq_bins;            // N_FFT/2+1 = 3073 (for STFT/iSTFT)
+        let model_freq_bins = self.strategy.model_freq_bins(); // N_FFT/2   = 3072 (model input)
+        let frames          = stft_out.frames;
+        let chunk_frames    = self.strategy.chunk_frames();
+        let overlap         = self.strategy.overlap();
         let step = (chunk_frames as f32 * (1.0 - overlap)).round() as usize;
         let step = step.max(1);
         let n_chunks = (frames.saturating_sub(chunk_frames)) / step + 1;
 
-        // Accumulate model predictions in full-size mask arrays
+        // Accumulate model predictions — use full freq_bins so iSTFT works correctly.
+        // Bins beyond model_freq_bins stay 0 (Nyquist bin is inaudible, safe to zero).
         let mut mask_sum_real = vec![0.0_f32; 2 * freq_bins * frames];
         let mut mask_sum_imag = vec![0.0_f32; 2 * freq_bins * frames];
         let mut mask_count    = vec![0.0_f32; 2 * freq_bins * frames];
 
         // 4. Chunked inference
         for chunk_idx in 0..n_chunks {
-            let frame_start = chunk_idx * step;
-            let frame_end   = (frame_start + chunk_frames).min(frames);
+            let frame_start   = chunk_idx * step;
+            let frame_end     = (frame_start + chunk_frames).min(frames);
             let actual_frames = frame_end - frame_start;
 
-            // Build input tensor [1, 4, freq_bins, chunk_frames]
+            // Build input tensor [1, 4, model_freq_bins, chunk_frames]
+            // model_freq_bins = N_FFT/2 (Nyquist bin dropped — MDX-Net convention)
             // 4 channels: ch1_real, ch1_imag, ch2_real, ch2_imag
-            let mut input_data = vec![0.0_f32; 1 * 4 * freq_bins * chunk_frames];
-            let ch_size = freq_bins * frames;
-            for f in 0..freq_bins {
+            let mut input_data = vec![0.0_f32; 1 * 4 * model_freq_bins * chunk_frames];
+            let ch_size = freq_bins * frames; // STFT storage stride (uses full freq_bins)
+            for f in 0..model_freq_bins {
                 for t in 0..actual_frames {
                     let src_t = frame_start + t;
                     // ch1 real
-                    input_data[0 * freq_bins * chunk_frames + f * chunk_frames + t] =
+                    input_data[0 * model_freq_bins * chunk_frames + f * chunk_frames + t] =
                         stft_out.real[f * frames + src_t];
                     // ch1 imag
-                    input_data[1 * freq_bins * chunk_frames + f * chunk_frames + t] =
+                    input_data[1 * model_freq_bins * chunk_frames + f * chunk_frames + t] =
                         stft_out.imag[f * frames + src_t];
                     // ch2 real
-                    input_data[2 * freq_bins * chunk_frames + f * chunk_frames + t] =
+                    input_data[2 * model_freq_bins * chunk_frames + f * chunk_frames + t] =
                         stft_out.real[ch_size + f * frames + src_t];
                     // ch2 imag
-                    input_data[3 * freq_bins * chunk_frames + f * chunk_frames + t] =
+                    input_data[3 * model_freq_bins * chunk_frames + f * chunk_frames + t] =
                         stft_out.imag[ch_size + f * frames + src_t];
                 }
             }
             let input_arr = Array4::from_shape_vec(
-                (1, 4, freq_bins, chunk_frames), input_data,
+                (1, 4, model_freq_bins, chunk_frames), input_data,
             ).map_err(|e| format!("Input shape error: {}", e))?;
 
             // Run ONNX inference (predicts instrument mask)
             let pred = self.strategy.infer_chunk(input_arr)?;
 
-            // Accumulate predictions into full mask (overlap-add)
-            for f in 0..freq_bins {
+            // Accumulate predictions into full-size mask (overlap-add).
+            // Only model_freq_bins are written; Nyquist bin stays 0.
+            let ch_size_full = freq_bins * frames;
+            for f in 0..model_freq_bins {
                 for t in 0..actual_frames {
                     let dst = frame_start + t;
                     // ch1
                     let idx1 = f * frames + dst;
-                    mask_sum_real[idx1]        += pred[[0, 0, f, t]];
-                    mask_sum_imag[idx1]        += pred[[0, 1, f, t]];
-                    mask_count[idx1]           += 1.0;
+                    mask_sum_real[idx1] += pred[[0, 0, f, t]];
+                    mask_sum_imag[idx1] += pred[[0, 1, f, t]];
+                    mask_count[idx1]    += 1.0;
                     // ch2
-                    let idx2 = ch_size + f * frames + dst;
-                    mask_sum_real[idx2]        += pred[[0, 2, f, t]];
-                    mask_sum_imag[idx2]        += pred[[0, 3, f, t]];
-                    mask_count[idx2]           += 1.0;
+                    let idx2 = ch_size_full + f * frames + dst;
+                    mask_sum_real[idx2] += pred[[0, 2, f, t]];
+                    mask_sum_imag[idx2] += pred[[0, 3, f, t]];
+                    mask_count[idx2]    += 1.0;
                 }
             }
 

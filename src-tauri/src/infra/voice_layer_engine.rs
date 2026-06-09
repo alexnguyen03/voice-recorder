@@ -1,11 +1,6 @@
-use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::core::models::AudioBuffer;
-
-const HUSH_MODEL_URL: &str = "https://huggingface.co/weya-ai/hush/resolve/main/onnx/advanced_dfnet16k_model_best_onnx.tar.gz";
-const HUSH_MODEL_FILE: &str = "advanced_dfnet16k_model_best_onnx.tar.gz";
-const MIN_MODEL_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VoiceLayerOptions {
@@ -14,6 +9,18 @@ pub struct VoiceLayerOptions {
     pub reduce_breath: bool,
     pub reduce_plosive: bool,
     pub smooth_voice_cutoff: bool,
+}
+
+impl Default for VoiceLayerOptions {
+    fn default() -> Self {
+        Self {
+            ml_voice_layers_enabled: false,
+            reduce_sibilance: false,
+            reduce_breath: false,
+            reduce_plosive: false,
+            smooth_voice_cutoff: false,
+        }
+    }
 }
 
 impl VoiceLayerOptions {
@@ -39,15 +46,22 @@ impl VoiceLayerEngine {
         buffer: &mut AudioBuffer,
         options: VoiceLayerOptions,
     ) -> Result<(), String> {
+        let _ = app; // AppHandle reserved for future AI runtime hooks
+        self.process_no_app(buffer, options)
+    }
+
+    /// Same as [`process`] but without requiring an [`AppHandle`].
+    /// Use this from `spawn_blocking` closures where `AppHandle` is not `Send`.
+    pub fn process_no_app(
+        &self,
+        buffer: &mut AudioBuffer,
+        options: VoiceLayerOptions,
+    ) -> Result<(), String> {
         if !options.any_enabled() {
             return Ok(());
         }
 
         if options.ml_voice_layers_enabled {
-            // Cache the Hush production bundle on first use. The current public artifact
-            // ships as a packaged enhancement bundle, so v1 keeps the ML asset ready here
-            // while the layer controls below run deterministic offline DSP.
-            self.ensure_hush_model(app)?;
             self.apply_main_vocal_focus(buffer);
         }
 
@@ -65,61 +79,6 @@ impl VoiceLayerEngine {
         }
 
         Ok(())
-    }
-
-    fn model_dir(&self, app: &AppHandle) -> Result<PathBuf, String> {
-        let doc_dir = app
-            .path()
-            .document_dir()
-            .map_err(|e| format!("Failed to find Documents dir: {}", e))?;
-        let dir = doc_dir.join("VoiceRecorder").join(".models").join("hush");
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("Failed to create model cache dir: {}", e))?;
-        Ok(dir)
-    }
-
-    fn ensure_hush_model(&self, app: &AppHandle) -> Result<PathBuf, String> {
-        let path = self.model_dir(app)?.join(HUSH_MODEL_FILE);
-        if self.is_valid_model_file(&path) {
-            return Ok(path);
-        }
-
-        let tmp_path = path.with_extension("download");
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("voice-recorder/0.1 voice-layer-cache")
-            .build()
-            .map_err(|e| format!("Failed to initialize Hush model downloader: {}", e))?;
-        let response = client
-            .get(HUSH_MODEL_URL)
-            .send()
-            .map_err(|e| format!("Failed to download Hush model: {}", e))?;
-        if !response.status().is_success() {
-            return Err(format!("Failed to download Hush model: HTTP {}", response.status()));
-        }
-
-        let bytes = response
-            .bytes()
-            .map_err(|e| format!("Failed to read Hush model response: {}", e))?;
-        if bytes.len() as u64 <= MIN_MODEL_BYTES {
-            return Err("Downloaded Hush model is unexpectedly small".to_string());
-        }
-
-        std::fs::write(&tmp_path, &bytes)
-            .map_err(|e| format!("Failed to write Hush model cache: {}", e))?;
-        if path.exists() {
-            std::fs::remove_file(&path)
-                .map_err(|e| format!("Failed to replace invalid Hush model cache: {}", e))?;
-        }
-        std::fs::rename(&tmp_path, &path)
-            .map_err(|e| format!("Failed to finalize Hush model cache: {}", e))?;
-
-        Ok(path)
-    }
-
-    fn is_valid_model_file(&self, path: &PathBuf) -> bool {
-        path.metadata()
-            .map(|m| m.is_file() && m.len() > MIN_MODEL_BYTES)
-            .unwrap_or(false)
     }
 
     fn apply_main_vocal_focus(&self, buffer: &mut AudioBuffer) {

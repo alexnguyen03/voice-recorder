@@ -1,5 +1,5 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, Stream, Sample};
+use cpal::{SampleFormat, Stream};
 use std::sync::{mpsc, Arc, Mutex};
 use crate::infra::dsp_engine::LiveDspSession;
 

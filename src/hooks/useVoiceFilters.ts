@@ -35,6 +35,10 @@ export const DEFAULT_FILTERS: VoiceFilterState = {
   ml_voice_layers_enabled:   false,
   reduce_sibilance:          false,
   smooth_voice_cutoff:       false,
+  enhance_mode:              "fast_clean",
+  preset:                    null,
+  enhance_strength:          0.5,
+  natural_clean_balance:     0.5,
 };
 
 export const toAudioUrl = (filePath: string): string => {
@@ -63,7 +67,11 @@ const isDefaultFilters = (f: VoiceFilterState): boolean =>
   f.volume_boost               === 0.5 &&
   !f.ml_voice_layers_enabled &&
   !f.reduce_sibilance &&
-  !f.smooth_voice_cutoff;
+  !f.smooth_voice_cutoff &&
+  f.enhance_mode             === "fast_clean" &&
+  f.preset                   === null &&
+  f.enhance_strength         === 0.5 &&
+  f.natural_clean_balance    === 0.5;
 
 /** Restore saved FilterParams from meta sidecar into VoiceFilterState. */
 const fromFilterParams = (fp: FilterParams): VoiceFilterState => ({
@@ -87,6 +95,10 @@ const fromFilterParams = (fp: FilterParams): VoiceFilterState => ({
   ml_voice_layers_enabled:  fp.ml_voice_layers_enabled ?? false,
   reduce_sibilance:         fp.reduce_sibilance        ?? false,
   smooth_voice_cutoff:      fp.smooth_voice_cutoff     ?? false,
+  enhance_mode:             fp.enhance_mode            ?? "fast_clean",
+  preset:                   fp.preset                  ?? null,
+  enhance_strength:         fp.enhance_strength        ?? 0.5,
+  natural_clean_balance:    fp.natural_clean_balance   ?? 0.5,
 });
 
 interface UseVoiceFiltersArgs {
@@ -172,8 +184,10 @@ export const useVoiceFilters = ({ selectedFile, onApplyEffects }: UseVoiceFilter
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
-  const processingLabel = filters.ml_voice_layers_enabled
-    ? "DOWNLOADING MODEL / RENDERING"
+  const processingLabel = filters.enhance_mode === "best_quality"
+    ? "BEST QUALITY RENDERING"
+    : filters.ml_voice_layers_enabled
+    ? "VOICE CLEANUP RENDERING"
     : "RENDERING";
 
   return {

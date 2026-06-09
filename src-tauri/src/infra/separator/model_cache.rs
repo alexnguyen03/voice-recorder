@@ -78,8 +78,9 @@ impl ModelCache {
         progress_cb: &impl Fn(u64, u64),
     ) -> Result<(), String> {
         let client = reqwest::blocking::Client::builder()
-            .user_agent("voice-recorder/1.0 model-cache")
-            .timeout(std::time::Duration::from_secs(300))
+            .user_agent("Mozilla/5.0 voice-recorder/1.0 model-cache")
+            .timeout(std::time::Duration::from_secs(600))
+            .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .map_err(|e| format!("HTTP client error: {}", e))?;
 
@@ -89,18 +90,31 @@ impl ModelCache {
             .map_err(|e| format!("Model download failed: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(format!("Model download HTTP error: {}", response.status()));
+            return Err(format!(
+                "Model download HTTP error: {} (URL: {})",
+                response.status(), url
+            ));
         }
 
         let total = response.content_length().unwrap_or(0);
-        let bytes = response
-            .bytes()
-            .map_err(|e| format!("Failed to read model bytes: {}", e))?;
 
-        progress_cb(bytes.len() as u64, total.max(bytes.len() as u64));
+        // Stream body in 64 KB chunks to provide real-time progress
+        let mut downloaded: u64 = 0;
+        let mut file = std::fs::File::create(dest)
+            .map_err(|e| format!("Failed to create temp file: {}", e))?;
 
-        std::fs::write(dest, &bytes)
-            .map_err(|e| format!("Failed to write model to disk: {}", e))?;
+        use std::io::{Read, Write};
+        let mut reader = response;
+        let mut buf = vec![0u8; 65_536]; // 64 KB buffer
+        loop {
+            let n = reader.read(&mut buf)
+                .map_err(|e| format!("Failed to read model bytes: {}", e))?;
+            if n == 0 { break; }
+            file.write_all(&buf[..n])
+                .map_err(|e| format!("Failed to write model chunk: {}", e))?;
+            downloaded += n as u64;
+            progress_cb(downloaded, total.max(downloaded));
+        }
 
         Ok(())
     }

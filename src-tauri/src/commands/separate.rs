@@ -28,54 +28,61 @@ pub enum OutputMode {
 ///
 /// Returns paths to the saved stem WAV files (alongside the source file).
 #[tauri::command]
-pub fn separate_vocals(
+pub async fn separate_vocals(
     app: AppHandle,
     file_path: String,
     output_mode: String,
 ) -> Result<SeparationResult, String> {
-    let storage = LocalStorage::new();
-    let buffer  = storage.load_file(&file_path).map_err(|e| e.to_string())?;
+    // AppHandle is Clone + Send in Tauri v2, so we can move a clone into spawn_blocking.
+    let app_clone = app.clone();
 
-    let start = std::time::Instant::now();
+    tauri::async_runtime::spawn_blocking(move || {
+        let storage = LocalStorage::new();
+        let buffer  = storage.load_file(&file_path).map_err(|e| e.to_string())?;
 
-    // Load MDX-Net model (downloads ~45 MB on first use)
-    let strategy = MdxNetStrategy::load(&app, |downloaded, total| {
-        if total > 0 {
-            let pct = (downloaded * 100 / total) as u8;
-            let _ = app.emit("separation:download_progress",
-                serde_json::json!({ "percent": pct, "downloaded": downloaded, "total": total }));
-        }
-    })?;
+        let start = std::time::Instant::now();
 
-    // Run full separation pipeline
-    let mut engine = SeparationEngine::new(Box::new(strategy));
-    let stems = engine.run(&app, &buffer)?;
+        // Load MDX-Net model (downloads ~45 MB on first use)
+        let strategy = MdxNetStrategy::load(&app_clone, |downloaded, total| {
+            if total > 0 {
+                let pct = (downloaded * 100 / total) as u8;
+                let _ = app_clone.emit("separation:download_progress",
+                    serde_json::json!({ "percent": pct, "downloaded": downloaded, "total": total }));
+            }
+        })?;
 
-    let mode = parse_mode(&output_mode);
+        // Run full separation pipeline
+        let mut engine = SeparationEngine::new(Box::new(strategy));
+        let stems = engine.run(&app_clone, &buffer)?;
 
-    // Save requested stems alongside the source file
-    let base = file_path.trim_end_matches(".wav");
-    let vocals_path = if matches!(mode, OutputMode::VocalsOnly | OutputMode::Both) {
-        let path = format!("{}_vocals.wav", base);
-        storage.save_file(&stems.vocals_buffer(), &path).map_err(|e| e.to_string())?;
-        Some(path)
-    } else {
-        None
-    };
+        let mode = parse_mode(&output_mode);
 
-    let accompaniment_path = if matches!(mode, OutputMode::AccompanimentOnly | OutputMode::Both) {
-        let path = format!("{}_accompaniment.wav", base);
-        storage.save_file(&stems.accompaniment_buffer(), &path).map_err(|e| e.to_string())?;
-        Some(path)
-    } else {
-        None
-    };
+        // Save requested stems alongside the source file
+        let base = file_path.trim_end_matches(".wav");
+        let vocals_path = if matches!(mode, OutputMode::VocalsOnly | OutputMode::Both) {
+            let path = format!("{}_vocals.wav", base);
+            storage.save_file(&stems.vocals_buffer(), &path).map_err(|e| e.to_string())?;
+            Some(path)
+        } else {
+            None
+        };
 
-    Ok(SeparationResult {
-        vocals_path,
-        accompaniment_path,
-        processing_time_ms: start.elapsed().as_millis() as u64,
+        let accompaniment_path = if matches!(mode, OutputMode::AccompanimentOnly | OutputMode::Both) {
+            let path = format!("{}_accompaniment.wav", base);
+            storage.save_file(&stems.accompaniment_buffer(), &path).map_err(|e| e.to_string())?;
+            Some(path)
+        } else {
+            None
+        };
+
+        Ok(SeparationResult {
+            vocals_path,
+            accompaniment_path,
+            processing_time_ms: start.elapsed().as_millis() as u64,
+        })
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn parse_mode(s: &str) -> OutputMode {

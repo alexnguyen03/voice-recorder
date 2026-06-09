@@ -77,7 +77,7 @@ export const VocalSeparationPanel: React.FC<VocalSeparationPanelProps> = ({
       >
         <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         <Scissors className="w-3.5 h-3.5" />
-        <span>Vocal Isolation</span>
+        <span>Source / Vocal Isolation</span>
         {state.status === "done" && (
           <span className="ml-1 px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40
             text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">DONE</span>
@@ -102,7 +102,7 @@ export const VocalSeparationPanel: React.FC<VocalSeparationPanelProps> = ({
           <div className="px-4 py-2.5 bg-violet-50/60 dark:bg-violet-950/20
             border-b border-violet-100 dark:border-violet-900/30">
             <p className="text-[10px] text-slate-400 leading-relaxed">
-              Powered by{" "}
+              Source separation powered by{" "}
               <strong className="text-violet-400">MDX-Net</strong> (UVR-MDX-NET-Inst_HQ_3) —
               ~45 MB model, downloaded once and cached.
               Processing ~8–15× real-time on CPU.
