@@ -181,30 +181,30 @@ const Header: React.FC<HeaderProps> = ({ fileName, hasPreview, isProcessing, pro
   <div className="flex items-center gap-3 mb-4">
     <button
       onClick={onBack}
-      className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer transition-colors active:scale-95"
+      className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer transition-colors active:scale-95"
     >
       <ArrowLeft className="w-4 h-4" />
       Back
     </button>
-    <span className="text-slate-300 dark:text-slate-600 select-none">.</span>
-    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{fileName}</span>
+    <span className="text-slate-350 dark:text-slate-600 select-none">.</span>
+    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{fileName}</span>
     {isEditingVocalStem && (
-      <span className="ml-auto px-1.5 py-0.5 rounded-sm bg-fuchsia-100 dark:bg-fuchsia-950/50 text-fuchsia-600 dark:text-fuchsia-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+      <span className="ml-auto px-1.5 py-0.5 rounded-sm border border-fuchsia-200 dark:border-fuchsia-900 text-fuchsia-600 dark:text-fuchsia-400 text-[10px] font-bold tracking-wide flex-shrink-0">
         VOCAL STEM
       </span>
     )}
     {hasPreview && !isProcessing && !isEditingVocalStem && (
-      <span className="ml-auto px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
-        RUST PREVIEW
+      <span className="ml-auto px-1.5 py-0.5 rounded-sm border border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+        PREVIEW READY
       </span>
     )}
     {hasPreview && !isProcessing && isEditingVocalStem && (
-      <span className="px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
-        PREVIEW
+      <span className="px-1.5 py-0.5 rounded-sm border border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+        PREVIEW READY
       </span>
     )}
     {isProcessing && (
-      <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold tracking-wide flex-shrink-0">
+      <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400 text-[10px] font-bold tracking-wide flex-shrink-0">
         {processingLabel}
       </span>
     )}
