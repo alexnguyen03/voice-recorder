@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { toAudioUrl } from "../../hooks/useVoiceFilters";
 
 /** Methods exposed to parent via ref */
 export interface WaveformEditorHandle {
@@ -59,6 +60,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   // All EQ/DSP processing is done by the Rust engine before the file reaches this player.
   const audioCtxRef     = useRef<AudioContext | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
+  const prevFilePathRef = useRef<string>("");
+  const isPlayingRef    = useRef<boolean>(false);
 
   // High-density bar count (180 points for a premium professional look)
   const numBars = 180;
@@ -78,6 +81,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
   useEffect(() => { endMsRef.current = endMs; }, [endMs]);
   useEffect(() => { isDecodingRef.current = isDecoding; }, [isDecoding]);
   useEffect(() => { editModeRef.current = editMode ?? null; }, [editMode]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
   // Tear down AudioContext when the source file changes
   useEffect(() => {
@@ -86,7 +90,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       audioCtxRef.current  = null;
       analyserNodeRef.current = null;
     };
-  }, [audioUrl]);
+  }, [filePath]);
 
   // Fetch audio file into a blob to bypass Tauri CORS restrictions with Web Audio API
   useEffect(() => {
@@ -113,6 +117,40 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
   }, [audioUrl]);
+
+  // Sync the audio element src with blobUrl, maintaining play position on preview update
+  useEffect(() => {
+    if (!audioRef.current) return;
+    const audio = audioRef.current;
+    
+    if (!blobUrl) {
+      audio.src = "";
+      return;
+    }
+
+    const wasPlaying = isPlayingRef.current;
+    const curTime = currentTimeRef.current;
+
+    // Check if it's just a preview update for the same file
+    const isSameFile = filePath === prevFilePathRef.current;
+
+    if (isSameFile && audio.src && audio.src !== blobUrl) {
+      const onMetadata = () => {
+        audio.currentTime = curTime;
+        if (wasPlaying) {
+          audio.play().catch(err => console.warn("Failed to resume playback after preview update:", err));
+        }
+        audio.removeEventListener("loadedmetadata", onMetadata);
+      };
+      
+      audio.addEventListener("loadedmetadata", onMetadata);
+      audio.src = blobUrl;
+      audio.load();
+    } else {
+      audio.src = blobUrl;
+      audio.load();
+    }
+  }, [blobUrl, filePath]);
 
 
 
@@ -362,18 +400,17 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     }
   };
 
-  // 2. Load Audio and Extract Waveform
+  // 2. Load Audio and Extract Waveform (Runs only when filePath changes)
   useEffect(() => {
     let active = true;
-    if (!audioUrl) return;
+    if (!filePath) return;
 
     setIsPlaying(false);
+    onPlayStateChange?.(false);
     currentTimeRef.current = 0;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = audioUrl;
-      audioRef.current.load();
-    }
+    setStartMs(0);
+
+    const decodeUrl = toAudioUrl(filePath);
 
     const decodeAudio = async () => {
       setIsDecoding(true);
@@ -387,13 +424,13 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
         setEndMs(20000);
       };
 
-      if (audioUrl.startsWith("[BROWSER_PREVIEW_MODE]")) {
+      if (decodeUrl.startsWith("[BROWSER_PREVIEW_MODE]")) {
         fallback();
         return;
       }
 
       try {
-        const response = await fetch(audioUrl);
+        const response = await fetch(decodeUrl);
         if (!response.ok) throw new Error("Fetch failed");
         
         const arrayBuffer = await response.arrayBuffer();
@@ -439,10 +476,12 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
 
     decodeAudio();
 
+    prevFilePathRef.current = filePath;
+
     return () => {
       active = false;
     };
-  }, [audioUrl, filePath]);
+  }, [filePath]);
 
   // 3. Ultra-Smooth 60FPS Playhead Tracker Loop
   useEffect(() => {
@@ -748,7 +787,6 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle, WaveformEditorPro
     <div className="w-full flex flex-col items-center">
       {/* Hidden audio tag */}
       <audio
-        key={blobUrl || "empty"}
         ref={audioRef}
         src={blobUrl || ""}
         crossOrigin="anonymous"
