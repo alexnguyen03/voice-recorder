@@ -423,9 +423,19 @@ const BandFader: React.FC<BandFaderProps> = ({ band, onChange }) => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 interface ProEQPageProps {
   initialAudioPath?: string | null;
+  onPreviewUrlChange?: (url: string | null) => void;
 }
 
-export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
+interface EqSettings {
+  bands: EQBand[];
+  warmth: number;
+  compEnabled: boolean;
+  compThreshold: number;
+  compRatio: number;
+  effectEnabled: boolean;
+}
+
+export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPreviewUrlChange }) => {
   const [bands, setBands] = useState<EQBand[]>(DEFAULT_BANDS);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [warmth, setWarmth] = useState(0);
@@ -446,6 +456,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
   const [effectEnabled, setEffectEnabled] = useState(true);    // EQ bypass toggle
   const [isExporting, setIsExporting] = useState(false);
   const [exportDone, setExportDone] = useState(false);
+  const [settingsVersion, setSettingsVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Web Audio refs
@@ -453,59 +464,129 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const filtersRef = useRef<BiquadFilterNode[]>([]);
   const compRef = useRef<DynamicsCompressorNode | null>(null);
+  const warmthFilterRef = useRef<BiquadFilterNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const analyserInRef = useRef<AnalyserNode | null>(null);
   const analyserOutRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const settingsRef = useRef<EqSettings>({
+    bands: DEFAULT_BANDS,
+    warmth: 0,
+    compEnabled: true,
+    compThreshold: -20,
+    compRatio: 3,
+    effectEnabled: true,
+  });
 
-  // Update band gain
-  const updateBand = useCallback((id: string, gain: number) => {
-    setBands((prev) => prev.map((b) => (b.id === id ? { ...b, gain } : b)));
-    setSelectedPreset(null);
+  const applyLiveSettings = useCallback((settings: EqSettings = settingsRef.current) => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    const t = ctx.currentTime;
 
-    // Live update the Web Audio filter
-    const idx = DEFAULT_BANDS.findIndex((b) => b.id === id);
-    if (filtersRef.current[idx]) {
-      filtersRef.current[idx].gain.setTargetAtTime(gain, audioCtxRef.current!.currentTime, 0.01);
+    filtersRef.current.forEach((filter, i) => {
+      const band = settings.bands[i];
+      if (!band) return;
+      filter.gain.setTargetAtTime(settings.effectEnabled ? band.gain : 0, t, 0.02);
+      filter.frequency.setTargetAtTime(band.freq, t, 0.02);
+      filter.Q.setTargetAtTime(band.q, t, 0.02);
+    });
+
+    if (warmthFilterRef.current) {
+      warmthFilterRef.current.gain.setTargetAtTime(
+        settings.effectEnabled ? (settings.warmth / 100) * 6 : 0,
+        t,
+        0.02
+      );
+    }
+
+    if (compRef.current) {
+      compRef.current.threshold.setTargetAtTime(
+        settings.effectEnabled ? settings.compThreshold : 0,
+        t,
+        0.02
+      );
+      compRef.current.ratio.setTargetAtTime(
+        settings.effectEnabled ? settings.compRatio : 1,
+        t,
+        0.02
+      );
     }
   }, []);
 
+  const updateSettings = useCallback((patch: Partial<EqSettings>) => {
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
+    applyLiveSettings(next);
+    setSettingsVersion((v) => v + 1);
+    return next;
+  }, [applyLiveSettings]);
+
+  // Update band gain
+  const updateBand = useCallback((id: string, gain: number) => {
+    const nextBands = settingsRef.current.bands.map((b) => (b.id === id ? { ...b, gain } : b));
+    updateSettings({ bands: nextBands });
+    setBands(nextBands);
+    setSelectedPreset(null);
+  }, [updateSettings]);
+
   // Apply preset
   const applyPreset = useCallback((preset: Preset) => {
+    const nextBands = settingsRef.current.bands.map((b, i) => ({
+      ...b,
+      gain: preset.gains[i] ?? 0,
+    }));
+    updateSettings({
+      bands: nextBands,
+      warmth: preset.warmth,
+      compThreshold: preset.compressor.threshold,
+      compRatio: preset.compressor.ratio,
+    });
+
     setSelectedPreset(preset.name);
     setWarmth(preset.warmth);
     setCompThreshold(preset.compressor.threshold);
     setCompRatio(preset.compressor.ratio);
+    setBands(nextBands);
+  }, [updateSettings]);
 
-    setBands((prev) =>
-      prev.map((b, i) => ({ ...b, gain: preset.gains[i] ?? 0 }))
-    );
+  const resetBands = useCallback(() => {
+    const nextBands = DEFAULT_BANDS.map((b) => ({ ...b, gain: 0 }));
+    updateSettings({ bands: nextBands });
+    setBands(nextBands);
+    setSelectedPreset(null);
+  }, [updateSettings]);
 
-    // Live update filters
-    preset.gains.forEach((g, i) => {
-      if (filtersRef.current[i]) {
-        filtersRef.current[i].gain.setTargetAtTime(
-          g,
-          audioCtxRef.current?.currentTime ?? 0,
-          0.02
-        );
-      }
+  const updateWarmth = useCallback((value: number) => {
+    updateSettings({ warmth: value });
+    setWarmth(value);
+  }, [updateSettings]);
+
+  const toggleCompressor = useCallback(() => {
+    setCompEnabled((current) => {
+      const next = !current;
+      updateSettings({ compEnabled: next });
+      return next;
     });
+  }, [updateSettings]);
 
-    if (compRef.current) {
-      compRef.current.threshold.setTargetAtTime(
-        preset.compressor.threshold,
-        audioCtxRef.current?.currentTime ?? 0,
-        0.02
-      );
-      compRef.current.ratio.setTargetAtTime(
-        preset.compressor.ratio,
-        audioCtxRef.current?.currentTime ?? 0,
-        0.02
-      );
-    }
-  }, []);
+  const updateCompThreshold = useCallback((value: number) => {
+    updateSettings({ compThreshold: value });
+    setCompThreshold(value);
+  }, [updateSettings]);
+
+  const updateCompRatio = useCallback((value: number) => {
+    updateSettings({ compRatio: value });
+    setCompRatio(value);
+  }, [updateSettings]);
+
+  const toggleEffectEnabled = useCallback(() => {
+    setEffectEnabled((current) => {
+      const next = !current;
+      updateSettings({ effectEnabled: next });
+      return next;
+    });
+  }, [updateSettings]);
 
   // Level meter animation
   const animateMeters = useCallback(() => {
@@ -524,6 +605,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
   // Start listening
   const startListening = async () => {
     try {
+      const current = settingsRef.current;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       const ctx = new AudioContext({ sampleRate: 44100 });
@@ -538,11 +620,11 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
       analyserInRef.current = analyserIn;
 
       // Create EQ filters chain
-      const filters = bands.map((band) => {
+      const filters = current.bands.map((band) => {
         const f = ctx.createBiquadFilter();
         f.type = band.type;
         f.frequency.value = band.freq;
-        f.gain.value = band.gain;
+        f.gain.value = current.effectEnabled ? band.gain : 0;
         f.Q.value = band.q;
         return f;
       });
@@ -550,9 +632,9 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
 
       // Compressor
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = compThreshold;
+      comp.threshold.value = current.effectEnabled ? current.compThreshold : 0;
       comp.knee.value = 10;
-      comp.ratio.value = compRatio;
+      comp.ratio.value = current.effectEnabled ? current.compRatio : 1;
       comp.attack.value = 0.005;
       comp.release.value = 0.25;
       compRef.current = comp;
@@ -561,7 +643,8 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
       const warmthGain = ctx.createBiquadFilter();
       warmthGain.type = "lowshelf";
       warmthGain.frequency.value = 200;
-      warmthGain.gain.value = (warmth / 100) * 6;
+      warmthGain.gain.value = current.effectEnabled ? (current.warmth / 100) * 6 : 0;
+      warmthFilterRef.current = warmthGain;
       gainRef.current = ctx.createGain();
       gainRef.current.gain.value = 1.0;
 
@@ -576,8 +659,8 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
       for (let i = 0; i < filters.length - 1; i++) {
         filters[i].connect(filters[i + 1]);
       }
-      filters[filters.length - 1].connect(compEnabled ? comp : warmthGain);
-      if (compEnabled) comp.connect(warmthGain);
+      filters[filters.length - 1].connect(current.compEnabled ? comp : warmthGain);
+      if (current.compEnabled) comp.connect(warmthGain);
       warmthGain.connect(gainRef.current!);
       gainRef.current!.connect(analyserOut);
       // NOTE: not connecting to ctx.destination to avoid feedback
@@ -595,6 +678,9 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
     filtersRef.current = [];
+    compRef.current = null;
+    warmthFilterRef.current = null;
+    gainRef.current = null;
     setInputLevel(0);
     setOutputLevel(0);
     setIsListening(false);
@@ -665,56 +751,128 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
 
   // ── Effect bypass: smoothly mute/restore EQ gains in running chain
   useEffect(() => {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    filtersRef.current.forEach((f, i) => {
-      f.gain.setTargetAtTime(effectEnabled ? bands[i].gain : 0, t, 0.05);
-    });
-    if (compRef.current) {
-      compRef.current.threshold.setTargetAtTime(effectEnabled ? compThreshold : 0, t, 0.05);
-      compRef.current.ratio.setTargetAtTime(effectEnabled ? compRatio : 1, t, 0.05);
-    }
-  }, [effectEnabled]);
+    updateSettings({ bands, warmth, compEnabled, compThreshold, compRatio, effectEnabled });
+  }, [bands, warmth, compEnabled, compThreshold, compRatio, effectEnabled, updateSettings]);
 
   // ── Export rendered audio with full EQ chain (OfflineAudioContext)
+  const renderEqBlob = useCallback(async (sourceBuffer: AudioBuffer, settings: EqSettings): Promise<Blob> => {
+    const offline = new OfflineAudioContext(
+      sourceBuffer.numberOfChannels,
+      sourceBuffer.length,
+      sourceBuffer.sampleRate
+    );
+
+    const offSrc = offline.createBufferSource();
+    offSrc.buffer = sourceBuffer;
+
+    let lastNode: AudioNode = offSrc;
+    const offFilters = settings.bands.map((band) => {
+      const f = offline.createBiquadFilter();
+      f.type = band.type;
+      f.frequency.value = band.freq;
+      f.gain.value = settings.effectEnabled ? band.gain : 0;
+      f.Q.value = band.q;
+      return f;
+    });
+
+    offFilters.forEach((filter) => {
+      lastNode.connect(filter);
+      lastNode = filter;
+    });
+
+    const offComp = offline.createDynamicsCompressor();
+    offComp.threshold.value = settings.effectEnabled ? settings.compThreshold : 0;
+    offComp.knee.value = 10;
+    offComp.ratio.value = settings.effectEnabled ? settings.compRatio : 1;
+    offComp.attack.value = 0.005;
+    offComp.release.value = 0.25;
+
+    const offWarmth = offline.createBiquadFilter();
+    offWarmth.type = "lowshelf";
+    offWarmth.frequency.value = 200;
+    offWarmth.gain.value = settings.effectEnabled ? (settings.warmth / 100) * 6 : 0;
+
+    if (settings.compEnabled) {
+      lastNode.connect(offComp);
+      offComp.connect(offWarmth);
+    } else {
+      lastNode.connect(offWarmth);
+    }
+    offWarmth.connect(offline.destination);
+
+    offSrc.start(0);
+    const rendered = await offline.startRendering();
+    return encodeWAV(rendered);
+  }, []);
+
+  useEffect(() => {
+    if (!audioBuffer || !onPreviewUrlChange) {
+      onPreviewUrlChange?.(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const settings = settingsRef.current;
+      renderEqBlob(audioBuffer, settings)
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          if (cancelled) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+          onPreviewUrlChange(url);
+        })
+        .catch((err) => {
+          console.error("EQ preview render error:", err);
+          if (!cancelled) onPreviewUrlChange(null);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [audioBuffer, settingsVersion, onPreviewUrlChange, renderEqBlob]);
+
   const exportRendered = async () => {
     if (!audioBuffer) return;
     setIsExporting(true);
     setExportDone(false);
     try {
+      const current = settingsRef.current;
       const numCh = audioBuffer.numberOfChannels;
       const sr = audioBuffer.sampleRate;
       const len = audioBuffer.length;
       const offline = new OfflineAudioContext(numCh, len, sr);
 
       // Build EQ chain inside offline context
-      const offFilters = bands.map((band) => {
+      const offFilters = current.bands.map((band) => {
         const f = offline.createBiquadFilter();
         f.type = band.type;
         f.frequency.value = band.freq;
-        f.gain.value = effectEnabled ? band.gain : 0;
+        f.gain.value = current.effectEnabled ? band.gain : 0;
         f.Q.value = band.q;
         return f;
       });
       const offComp = offline.createDynamicsCompressor();
-      offComp.threshold.value = effectEnabled ? compThreshold : 0;
+      offComp.threshold.value = current.effectEnabled ? current.compThreshold : 0;
       offComp.knee.value = 10;
-      offComp.ratio.value = effectEnabled ? compRatio : 1;
+      offComp.ratio.value = current.effectEnabled ? current.compRatio : 1;
       offComp.attack.value = 0.005;
       offComp.release.value = 0.25;
       const offWarmth = offline.createBiquadFilter();
       offWarmth.type = "lowshelf";
       offWarmth.frequency.value = 200;
-      offWarmth.gain.value = effectEnabled ? (warmth / 100) * 6 : 0;
+      offWarmth.gain.value = current.effectEnabled ? (current.warmth / 100) * 6 : 0;
 
       // Chain: src -> filters -> comp -> warmth -> destination
       const offSrc = offline.createBufferSource();
       offSrc.buffer = audioBuffer;
       offSrc.connect(offFilters[0]);
       for (let i = 0; i < offFilters.length - 1; i++) offFilters[i].connect(offFilters[i + 1]);
-      offFilters[offFilters.length - 1].connect(compEnabled ? offComp : offWarmth);
-      if (compEnabled) offComp.connect(offWarmth);
+      offFilters[offFilters.length - 1].connect(current.compEnabled ? offComp : offWarmth);
+      if (current.compEnabled) offComp.connect(offWarmth);
       offWarmth.connect(offline.destination);
       offSrc.start(0);
 
@@ -776,7 +934,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
 
           {/* EQ Effect Toggle */}
           <button
-            onClick={() => setEffectEnabled(v => !v)}
+            onClick={toggleEffectEnabled}
             className={`pro-eq-effect-toggle ${effectEnabled ? "pro-eq-effect-toggle--on" : "pro-eq-effect-toggle--off"}`}
             id="eq-effect-toggle"
             title={effectEnabled ? "Bypass EQ (A/B compare)" : "Enable EQ"}
@@ -929,10 +1087,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
               <Sliders className="w-4 h-4" /> Parametric EQ Bands
             </h2>
             <button
-              onClick={() => {
-                setBands(DEFAULT_BANDS.map((b) => ({ ...b, gain: 0 })));
-                setSelectedPreset(null);
-              }}
+              onClick={resetBands}
               className="pro-eq-reset-btn"
               id="eq-reset-all"
             >
@@ -966,7 +1121,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
                 min={0}
                 max={100}
                 value={warmth}
-                onChange={(e) => setWarmth(Number(e.target.value))}
+                onChange={(e) => updateWarmth(Number(e.target.value))}
                 className="pro-eq-warmth-slider"
                 id="warmth-slider"
               />
@@ -999,7 +1154,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
               <div className="pro-eq-comp-header-right">
                 <div
                   className={`pro-eq-comp-toggle ${compEnabled ? "pro-eq-comp-toggle--on" : ""}`}
-                  onClick={(e) => { e.stopPropagation(); setCompEnabled((v) => !v); }}
+                  onClick={(e) => { e.stopPropagation(); toggleCompressor(); }}
                   id="comp-enable"
                 >
                   <div className="pro-eq-comp-toggle-thumb" />
@@ -1022,7 +1177,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
                       max={0}
                       step={1}
                       value={compThreshold}
-                      onChange={(e) => setCompThreshold(Number(e.target.value))}
+                      onChange={(e) => updateCompThreshold(Number(e.target.value))}
                       className="pro-eq-comp-slider"
                       id="comp-threshold"
                     />
@@ -1038,7 +1193,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
                       max={20}
                       step={0.5}
                       value={compRatio}
-                      onChange={(e) => setCompRatio(Number(e.target.value))}
+                      onChange={(e) => updateCompRatio(Number(e.target.value))}
                       className="pro-eq-comp-slider"
                       id="comp-ratio"
                     />

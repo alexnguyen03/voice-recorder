@@ -28,7 +28,25 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [actionMode, setActionMode] = useState<ActionMode>(null);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
+  const [eqPreviewUrl, setEqPreviewUrl] = useState<string | null>(null);
+  const eqPreviewUrlRef = useRef<string | null>(null);
   const audioUrl = selectedFile ? convertFileSrc(selectedFile) : "";
+
+  const handleEqPreviewUrlChange = useCallback((url: string | null) => {
+    if (eqPreviewUrlRef.current) URL.revokeObjectURL(eqPreviewUrlRef.current);
+    eqPreviewUrlRef.current = url;
+    setEqPreviewUrl(url);
+  }, []);
+
+  useEffect(() => {
+    handleEqPreviewUrlChange(null);
+  }, [selectedFile, handleEqPreviewUrlChange]);
+
+  useEffect(() => {
+    return () => {
+      if (eqPreviewUrlRef.current) URL.revokeObjectURL(eqPreviewUrlRef.current);
+    };
+  }, []);
 
   const handleConfirm = useCallback(async () => {
     if (actionMode === "trim") await onTrim(trimStart, trimEnd);
@@ -69,7 +87,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       <WaveformEditor
         ref={waveformRef}
         filePath={selectedFile}
-        audioUrl={audioUrl}
+        audioUrl={eqPreviewUrl ?? audioUrl}
         onTrim={onTrim}
         editMode={actionMode}
         onPlayStateChange={setIsPlaying}
@@ -99,7 +117,10 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
 
       <ErrorText message={statusMessage.toLowerCase().includes("error") ? statusMessage : ""} />
 
-      <ProEQPage initialAudioPath={selectedFile} />
+      <ProEQPage
+        initialAudioPath={selectedFile}
+        onPreviewUrlChange={handleEqPreviewUrlChange}
+      />
     </div>
   );
 };
