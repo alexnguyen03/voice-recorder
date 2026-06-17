@@ -4,8 +4,6 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { AudioService } from "../services/audioService";
 import {
   Mic,
-  Play,
-  Pause,
   Square,
   Radio,
   Sliders,
@@ -439,24 +437,20 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
   const [outputLevel, setOutputLevel] = useState(0);
   const [showCompressor, setShowCompressor] = useState(false);
 
-  // ── File playback state
+  // ── File render state
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackPos, setPlaybackPos] = useState(0);   // seconds elapsed
   const [isDragOver, setIsDragOver] = useState(false);
   const [fileLoadError, setFileLoadError] = useState<string | null>(null);
   const [isDecoding, setIsDecoding] = useState(false);
   const [effectEnabled, setEffectEnabled] = useState(true);    // EQ bypass toggle
   const [isExporting, setIsExporting] = useState(false);
   const [exportDone, setExportDone] = useState(false);
-  const waveCanvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Web Audio refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const fileSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const filtersRef = useRef<BiquadFilterNode[]>([]);
   const compRef = useRef<DynamicsCompressorNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
@@ -464,8 +458,6 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
   const analyserOutRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
-  const playStartTimeRef = useRef(0);   // ctx.currentTime when play started
-  const playOffsetRef = useRef(0);      // seconds offset into buffer
 
   // Update band gain
   const updateBand = useCallback((id: string, gain: number) => {
@@ -610,55 +602,17 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
 
   useEffect(() => () => stopListening(), []);
 
-  // ── Build shared EQ chain nodes (reused for both mic and file playback)
-  const buildChain = (ctx: AudioContext) => {
-    const filters = bands.map((band) => {
-      const f = ctx.createBiquadFilter();
-      f.type = band.type;
-      f.frequency.value = band.freq;
-      f.gain.value = band.gain;
-      f.Q.value = band.q;
-      return f;
-    });
-    const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = compThreshold;
-    comp.knee.value = 10;
-    comp.ratio.value = compRatio;
-    comp.attack.value = 0.005;
-    comp.release.value = 0.25;
-    const warmthFilter = ctx.createBiquadFilter();
-    warmthFilter.type = "lowshelf";
-    warmthFilter.frequency.value = 200;
-    warmthFilter.gain.value = (warmth / 100) * 6;
-    const gain = ctx.createGain();
-    gain.gain.value = 1.0;
-    const analyserIn = ctx.createAnalyser();
-    analyserIn.fftSize = 256;
-    const analyserOut = ctx.createAnalyser();
-    analyserOut.fftSize = 256;
-    // chain: analyserIn -> filters -> comp? -> warmth -> gain -> analyserOut
-    analyserIn.connect(filters[0]);
-    for (let i = 0; i < filters.length - 1; i++) filters[i].connect(filters[i + 1]);
-    filters[filters.length - 1].connect(compEnabled ? comp : warmthFilter);
-    if (compEnabled) comp.connect(warmthFilter);
-    warmthFilter.connect(gain);
-    gain.connect(analyserOut);
-    return { filters, comp, warmthFilter, gain, analyserIn, analyserOut };
-  };
-
   // ── Load audio file and decode
   const loadAudioFile = async (file: File) => {
     setFileLoadError(null);
     setIsDecoding(true);
     setAudioFile(file);
-    stopFilePlayback();
     try {
       const arrayBuf = await file.arrayBuffer();
       const tmpCtx = new AudioContext();
       const decoded = await tmpCtx.decodeAudioData(arrayBuf);
       await tmpCtx.close();
       setAudioBuffer(decoded);
-      drawWaveform(decoded);
     } catch {
       setFileLoadError("Cannot decode file. Please use MP3, WAV, OGG, or FLAC.");
       setAudioBuffer(null);
@@ -666,44 +620,6 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
       setIsDecoding(false);
     }
   };
-
-  // ── Draw waveform on canvas
-  const drawWaveform = (buf: AudioBuffer) => {
-    const canvas = waveCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const W = canvas.width;
-    const H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-    const data = buf.getChannelData(0);
-    const step = Math.ceil(data.length / W);
-    const grad = ctx.createLinearGradient(0, 0, W, 0);
-    grad.addColorStop(0, "#f97316");
-    grad.addColorStop(0.5, "#a78bfa");
-    grad.addColorStop(1, "#60a5fa");
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    for (let i = 0; i < W; i++) {
-      let min = 1, max = -1;
-      for (let j = 0; j < step; j++) {
-        const s = data[i * step + j] ?? 0;
-        if (s < min) min = s;
-        if (s > max) max = s;
-      }
-      const yLo = ((1 + min) / 2) * H;
-      const yHi = ((1 + max) / 2) * H;
-      ctx.moveTo(i, yLo);
-      ctx.lineTo(i, yHi);
-    }
-    ctx.stroke();
-  };
-
-  // Redraw waveform when canvas mounts
-  useEffect(() => {
-    if (audioBuffer) drawWaveform(audioBuffer);
-  }, [audioBuffer]);
 
   // ── Auto-load from initialAudioPath (from Recorded Library)
   useEffect(() => {
@@ -726,74 +642,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
     })();
   }, [initialAudioPath]);
 
-  // ── File playback
-  const playFile = async () => {
-    if (!audioBuffer) return;
-    stopFilePlayback();
-    if (isListening) stopListening();
-
-    const ctx = new AudioContext({ sampleRate: audioBuffer.sampleRate });
-    audioCtxRef.current = ctx;
-    const { filters, comp, gain, analyserIn, analyserOut } = buildChain(ctx);
-    filtersRef.current = filters;
-    compRef.current = comp;
-    gainRef.current = gain;
-    analyserInRef.current = analyserIn;
-    analyserOutRef.current = analyserOut;
-
-    const src = ctx.createBufferSource();
-    src.buffer = audioBuffer;
-    src.connect(analyserIn);
-    analyserOut.connect(ctx.destination);
-    fileSourceRef.current = src;
-    playStartTimeRef.current = ctx.currentTime;
-    src.start(0, playOffsetRef.current);
-    src.onended = () => {
-      setIsPlaying(false);
-      playOffsetRef.current = 0;
-      setPlaybackPos(0);
-    };
-    setIsPlaying(true);
-    animFrameRef.current = requestAnimationFrame(animateMeters);
-    // Progress ticker
-    const tick = () => {
-      if (!audioCtxRef.current) return;
-      const elapsed = playOffsetRef.current + (audioCtxRef.current.currentTime - playStartTimeRef.current);
-      setPlaybackPos(Math.min(elapsed, audioBuffer.duration));
-      if (elapsed < audioBuffer.duration) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  };
-
-  const pauseFile = () => {
-    if (!audioCtxRef.current || !fileSourceRef.current) return;
-    playOffsetRef.current += audioCtxRef.current.currentTime - playStartTimeRef.current;
-    fileSourceRef.current.stop();
-    fileSourceRef.current = null;
-    cancelAnimationFrame(animFrameRef.current);
-    audioCtxRef.current.close();
-    audioCtxRef.current = null;
-    setIsPlaying(false);
-    setInputLevel(0);
-    setOutputLevel(0);
-  };
-
-  const stopFilePlayback = () => {
-    cancelAnimationFrame(animFrameRef.current);
-    try { fileSourceRef.current?.stop(); } catch {}
-    fileSourceRef.current = null;
-    audioCtxRef.current?.close();
-    audioCtxRef.current = null;
-    filtersRef.current = [];
-    playOffsetRef.current = 0;
-    setIsPlaying(false);
-    setPlaybackPos(0);
-    setInputLevel(0);
-    setOutputLevel(0);
-  };
-
   const clearFile = () => {
-    stopFilePlayback();
     setAudioFile(null);
     setAudioBuffer(null);
     setFileLoadError(null);
@@ -973,7 +822,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
             </div>
           )}
 
-          {/* File loaded — waveform + controls */}
+          {/* File loaded */}
           {audioFile && (
             <div className="pro-eq-file-loaded">
               {/* File info bar */}
@@ -988,7 +837,6 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
                 </button>
               </div>
 
-              {/* Waveform */}
               {isDecoding && (
                 <div className="pro-eq-decoding">Decoding audio...</div>
               )}
@@ -996,56 +844,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
                 <div className="pro-eq-file-error">{fileLoadError}</div>
               )}
               {audioBuffer && !isDecoding && (
-                <div className="pro-eq-wave-wrap">
-                  <canvas
-                    ref={waveCanvasRef}
-                    width={800}
-                    height={64}
-                    className="pro-eq-wave-canvas"
-                  />
-                  {/* playhead overlay */}
-                  <div
-                    className="pro-eq-playhead"
-                    style={{ left: `${(playbackPos / audioBuffer.duration) * 100}%` }}
-                  />
-                </div>
-              )}
-
-              {/* Playback controls */}
-              {audioBuffer && !isDecoding && (
                 <div className="pro-eq-playback-controls">
-                  <button
-                    onClick={isPlaying ? pauseFile : playFile}
-                    className="pro-eq-play-btn"
-                    id="eq-play-btn"
-                  >
-                    {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
-                    {isPlaying ? "Pause" : "Play"}
-                  </button>
-
-                  <button
-                    onClick={stopFilePlayback}
-                    className="pro-eq-stop-btn"
-                    id="eq-stop-btn"
-                    disabled={!isPlaying && playbackPos === 0}
-                  >
-                    <Square className="w-4 h-4 fill-current" />
-                  </button>
-
-                  {/* Time / Progress */}
-                  <div className="pro-eq-progress-wrap">
-                    <div className="pro-eq-progress-bar">
-                      <div
-                        className="pro-eq-progress-fill"
-                        style={{ width: `${(playbackPos / audioBuffer.duration) * 100}%` }}
-                      />
-                    </div>
-                    <span className="pro-eq-time">
-                      {formatTime(playbackPos)} / {formatTime(audioBuffer.duration)}
-                    </span>
-                  </div>
-
-                  {/* Load another file */}
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="pro-eq-load-btn"
@@ -1054,7 +853,6 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath }) => {
                     <FolderOpen className="w-3.5 h-3.5" /> Load file
                   </button>
 
-                  {/* Export rendered WAV */}
                   <button
                     onClick={exportRendered}
                     disabled={isExporting || !audioBuffer}

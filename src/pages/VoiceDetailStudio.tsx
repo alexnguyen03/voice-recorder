@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, Scissors, X } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { WaveformEditor, WaveformEditorHandle } from "../components/editor/WaveformEditor";
-import { VoiceFiltersPanel } from "../components/editor/VoiceFiltersPanel";
-import { VocalSeparationPanel } from "../components/editor/VocalSeparationPanel";
-import { useVoiceFilters } from "../hooks/useVoiceFilters";
-import { AudioAnalysis, AudioService, VoiceEffectOptions } from "../services/audioService";
+import { ProEQPage } from "./ProEQPage";
+import { VoiceEffectOptions } from "../services/audioService";
 
 interface VoiceDetailStudioProps {
   selectedFile: string;
@@ -22,7 +21,6 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   onBack,
   onTrim,
   onCut,
-  onApplyEffects,
   statusMessage,
 }) => {
   const waveformRef = useRef<WaveformEditorHandle>(null);
@@ -30,43 +28,7 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
   const [actionMode, setActionMode] = useState<ActionMode>(null);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
-  const [showFilters, setShowFilters] = useState(false);
-  const [analysis, setAnalysis] = useState<AudioAnalysis | null>(null);
-  // When the user clicks "Edit Vocals with Filters" we swap the filter source
-  // to the separated vocals stem without changing the waveform / player.
-  const [filterSourceFile, setFilterSourceFile] = useState(selectedFile);
-
-  const {
-    filters,
-    activeAudioUrl,
-    hasPreview,
-    isProcessing,
-    previewError,
-    isFiltersActive,
-    processingLabel,
-    updateFilters,
-    resetFilters,
-    exportWithFilters,
-  } = useVoiceFilters({ selectedFile: filterSourceFile, onApplyEffects });
-
-  // Reset filterSourceFile whenever the user switches to a different recording
-  useEffect(() => {
-    setFilterSourceFile(selectedFile);
-    setAnalysis(null);
-    AudioService.analyzeAudio(selectedFile)
-      .then(setAnalysis)
-      .catch(err => {
-        console.error("[VoiceDetailStudio] analyzeAudio failed:", err);
-        setAnalysis(null);
-      });
-  }, [selectedFile]);
-
-  const handleUseVocals = (vocalsPath: string) => {
-    setFilterSourceFile(vocalsPath);
-    setShowFilters(true);
-  };
-
-  const isEditingVocalStem = filterSourceFile !== selectedFile;
+  const audioUrl = selectedFile ? convertFileSrc(selectedFile) : "";
 
   const handleConfirm = useCallback(async () => {
     if (actionMode === "trim") await onTrim(trimStart, trimEnd);
@@ -87,10 +49,6 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     return () => window.removeEventListener("keydown", onKey);
   }, [actionMode, handleConfirm]);
 
-  useEffect(() => {
-    if (hasPreview) setShowFilters(true);
-  }, [hasPreview]);
-
   const getFileName = (path: string) => path.split(/[/\\]/).pop() ?? "";
 
   const formatMs = (ms: number) => {
@@ -105,17 +63,13 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
     <div className="w-full flex flex-col gap-0 animate-fade-in">
       <Header
         fileName={getFileName(selectedFile)}
-        hasPreview={hasPreview}
-        isProcessing={isProcessing}
-        processingLabel={processingLabel}
-        isEditingVocalStem={isEditingVocalStem}
         onBack={onBack}
       />
 
       <WaveformEditor
         ref={waveformRef}
         filePath={selectedFile}
-        audioUrl={activeAudioUrl}
+        audioUrl={audioUrl}
         onTrim={onTrim}
         editMode={actionMode}
         onPlayStateChange={setIsPlaying}
@@ -144,40 +98,18 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       />
 
       <ErrorText message={statusMessage.toLowerCase().includes("error") ? statusMessage : ""} />
-      <ErrorText message={previewError ?? ""} />
 
-      <VoiceFiltersPanel
-        show={showFilters}
-        setShow={setShowFilters}
-        filters={filters}
-        isActive={isFiltersActive}
-        hasPreview={hasPreview}
-        isProcessing={isProcessing}
-        processingLabel={processingLabel}
-        updateFilters={updateFilters}
-        resetFilters={resetFilters}
-        exportWithFilters={exportWithFilters}
-        analysis={analysis}
-      />
-
-      <VocalSeparationPanel
-        selectedFile={selectedFile}
-        onUseVocals={handleUseVocals}
-      />
+      <ProEQPage initialAudioPath={selectedFile} />
     </div>
   );
 };
 
 interface HeaderProps {
   fileName: string;
-  hasPreview: boolean;
-  isProcessing: boolean;
-  processingLabel: string;
-  isEditingVocalStem: boolean;
   onBack: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ fileName, hasPreview, isProcessing, processingLabel, isEditingVocalStem, onBack }) => (
+const Header: React.FC<HeaderProps> = ({ fileName, onBack }) => (
   <div className="flex items-center gap-3 mb-4">
     <button
       onClick={onBack}
@@ -188,26 +120,6 @@ const Header: React.FC<HeaderProps> = ({ fileName, hasPreview, isProcessing, pro
     </button>
     <span className="text-slate-300 dark:text-slate-600 select-none">.</span>
     <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{fileName}</span>
-    {isEditingVocalStem && (
-      <span className="ml-auto px-1.5 py-0.5 rounded-sm bg-fuchsia-100 dark:bg-fuchsia-950/50 text-fuchsia-600 dark:text-fuchsia-400 text-[10px] font-bold tracking-wide flex-shrink-0">
-        VOCAL STEM
-      </span>
-    )}
-    {hasPreview && !isProcessing && !isEditingVocalStem && (
-      <span className="ml-auto px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
-        RUST PREVIEW
-      </span>
-    )}
-    {hasPreview && !isProcessing && isEditingVocalStem && (
-      <span className="px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wide flex-shrink-0">
-        PREVIEW
-      </span>
-    )}
-    {isProcessing && (
-      <span className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold tracking-wide flex-shrink-0">
-        {processingLabel}
-      </span>
-    )}
   </div>
 );
 
