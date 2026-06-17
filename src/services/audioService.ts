@@ -287,4 +287,29 @@ export const AudioService = {
     try { return await invoke<AudioAnalysis>("analyze_audio", { filePath }); }
     catch (e) { throw new Error(String(e)); }
   },
+
+  /**
+   * Save EQ-rendered WAV bytes into Documents/VoiceRecorder/eq/<fileName>.
+   * Returns the absolute path of the saved file.
+   */
+  async saveEqExport(fileName: string, wavBytes: Uint8Array): Promise<string> {
+    if (!isTauri()) {
+      // Browser fallback: trigger download
+      const blob = new Blob([wavBytes], { type: "audio/wav" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 2000);
+      return fileName;
+    }
+    try {
+      return await invoke<string>("save_eq_export", {
+        fileName,
+        wavBytes: Array.from(wavBytes),
+      });
+    } catch (e) { throw new Error(String(e)); }
+  },
 };

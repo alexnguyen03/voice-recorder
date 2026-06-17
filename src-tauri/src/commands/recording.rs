@@ -216,3 +216,31 @@ pub fn delete_recording(file_path: String) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Save EQ-rendered WAV bytes into Documents/VoiceRecorder/eq/<file_name>.
+/// Returns the absolute path of the saved file.
+#[tauri::command]
+pub fn save_eq_export(
+    app: AppHandle,
+    file_name: String,
+    wav_bytes: Vec<u8>,
+) -> Result<String, String> {
+    let doc_dir = app.path().document_dir()
+        .map_err(|e| format!("Failed to find Documents dir: {}", e))?;
+    let eq_dir = doc_dir.join("VoiceRecorder").join("eq");
+    std::fs::create_dir_all(&eq_dir)
+        .map_err(|e| format!("Failed to create eq dir: {}", e))?;
+
+    // Sanitise file name — keep only safe chars
+    let safe_name: String = file_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' { c } else { '_' })
+        .collect();
+    let safe_name = if safe_name.is_empty() { "eq_export.wav".to_string() } else { safe_name };
+
+    let out_path = eq_dir.join(&safe_name);
+    std::fs::write(&out_path, &wav_bytes)
+        .map_err(|e| format!("Failed to write EQ export: {}", e))?;
+
+    Ok(out_path.to_string_lossy().to_string())
+}

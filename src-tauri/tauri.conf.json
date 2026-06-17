@@ -22,7 +22,10 @@
       "assetProtocol": {
         "enable": true,
         "scope": [
-          "$DOCUMENT/**/*"
+          "$DOCUMENT/**/*",
+          "$AUDIO/**/*",
+          "$APPDATA/**/*",
+          "$HOME/**/*"
         ]
       }
     }

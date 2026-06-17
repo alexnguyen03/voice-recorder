@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { FolderOpen, Music, Search, X, Trash2, Clock, Calendar } from "lucide-react";
+import { FolderOpen, Music, Search, X, Trash2, Clock, Calendar, SlidersHorizontal } from "lucide-react";
 import { AudioService, RecordingInfo } from "../services/audioService";
 
 interface LibraryPageProps {
   filesList: string[];
   onSelectFile: (file: string) => void;
+  onOpenInEQ: (path: string) => void;
   getFileName: (path: string) => string;
   refreshFiles: () => void;
 }
@@ -29,6 +30,7 @@ function formatDate(epochSecs: number): string {
 export const LibraryPage: React.FC<LibraryPageProps> = ({
   filesList,
   onSelectFile,
+  onOpenInEQ,
   getFileName,
   refreshFiles,
 }) => {
@@ -250,6 +252,26 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {/* Edit in EQ — only visible on hover when NOT in select mode */}
+                  {!isSelectMode && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onOpenInEQ(file); }}
+                      title="Edit in Pro EQ"
+                      className="flex-shrink-0 opacity-0 group-hover:opacity-100
+                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
+                        bg-orange-50 hover:bg-orange-100
+                        dark:bg-orange-950/40 dark:hover:bg-orange-900/60
+                        text-orange-500 dark:text-orange-400
+                        text-[11px] font-bold
+                        border border-orange-200 dark:border-orange-700/50
+                        transition-all duration-150 cursor-pointer"
+                      id={`open-eq-${getFileName(file)}`}
+                    >
+                      <SlidersHorizontal className="w-3 h-3" />
+                      EQ
+                    </button>
+                  )}
                 </div>
               );
             })}
