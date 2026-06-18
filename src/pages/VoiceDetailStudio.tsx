@@ -3,14 +3,12 @@ import { ArrowLeft, Check, Scissors, X } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { WaveformEditor, WaveformEditorHandle } from "../components/editor/WaveformEditor";
 import { ProEQPage } from "./ProEQPage";
-import { VoiceEffectOptions } from "../services/audioService";
 
 interface VoiceDetailStudioProps {
   selectedFile: string;
   onBack: () => void;
   onTrim: (startMs: number, endMs: number) => Promise<void>;
   onCut: (startMs: number, endMs: number) => Promise<void>;
-  onApplyEffects: (effects: VoiceEffectOptions) => Promise<void>;
   statusMessage: string;
 }
 
@@ -116,6 +114,8 @@ export const VoiceDetailStudio: React.FC<VoiceDetailStudioProps> = ({
       />
 
       <ErrorText message={statusMessage.toLowerCase().includes("error") ? statusMessage : ""} />
+
+      <div className="mt-6 border-t border-slate-200 dark:border-slate-800" />
 
       <ProEQPage
         initialAudioPath={selectedFile}

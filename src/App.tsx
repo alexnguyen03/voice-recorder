@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Mic, FolderOpen, Headphones, Settings, SlidersHorizontal } from "lucide-react";
+import { Mic, FolderOpen, Headphones, Settings } from "lucide-react";
 import { useAudioRecorder } from "./hooks/useAudioRecorder";
 import { AudioService } from "./services/audioService";
 import { RecordingPage } from "./pages/RecordingPage";
@@ -7,7 +7,6 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { VoiceDetailStudio } from "./pages/VoiceDetailStudio";
 import { SettingsPage } from "./pages/SettingsPage";
 import { LiveMicStudio } from "./pages/LiveMicStudio";
-import { ProEQPage } from "./pages/ProEQPage";
 import "./App.css";
 
 
@@ -15,13 +14,12 @@ export type ThemeType = "light" | "dark" | "system";
 
 function App() {
   // Tabs: 'recording' | 'files' | 'settings' | 'live'
-  const [activeTab, setActiveTab] = useState<"recording" | "files" | "settings" | "live" | "eq">("recording");
+  const [activeTab, setActiveTab] = useState<"recording" | "files" | "settings" | "live">("recording");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [filesList, setFilesList] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [voiceEnhance, setVoiceEnhance] = useState(true);
-  const [eqAudioPath, setEqAudioPath] = useState<string | null>(null);
 
   const {
     isRecording,
@@ -167,17 +165,6 @@ function App() {
     }
   };
 
-  const handleApplyEffects = async (effects: import("./services/audioService").VoiceEffectOptions) => {
-    if (!selectedFile) return;
-    setStatusMessage("Exporting with filters...");
-    try {
-      const exportPath = await AudioService.applyVoiceEffects(selectedFile, effects);
-      setStatusMessage(`Exported: ${getFileName(exportPath)}`);
-      refreshFiles();
-    } catch (err) {
-      setStatusMessage(`Export error: ${err}`);
-    }
-  };
 
 
   return (
@@ -230,19 +217,6 @@ function App() {
           }`}
         >
           <Headphones className="w-3.5 h-3.5" /> Live Mic
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("eq");
-          }}
-          className={`px-6 py-2 text-sm font-bold rounded-lg cursor-pointer transition-all duration-200 flex items-center gap-1.5 ${
-            activeTab === "eq"
-              ? "bg-orange-600 text-white shadow-sm shadow-orange-500/30"
-              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-          id="tab-eq"
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5" /> Pro EQ
         </button>
         <button
           onClick={() => {
@@ -302,9 +276,7 @@ function App() {
 
         {activeTab === "live" && <LiveMicStudio />}
 
-        {activeTab === "eq" && <ProEQPage initialAudioPath={eqAudioPath} />}
-
-        {activeTab === "files" && (
+{activeTab === "files" && (
           <div className="w-full">
             {selectedFile === null ? (
               <LibraryPage
@@ -314,8 +286,8 @@ function App() {
                   setStatusMessage("");
                 }}
                 onOpenInEQ={(path) => {
-                  setEqAudioPath(path);
-                  setActiveTab("eq");
+                  setSelectedFile(path);
+                  setStatusMessage("");
                 }}
                 getFileName={getFileName}
                 refreshFiles={refreshFiles}
@@ -329,7 +301,6 @@ function App() {
                 }}
                 onTrim={handleTrim}
                 onCut={handleCut}
-                onApplyEffects={handleApplyEffects}
                 statusMessage={statusMessage}
               />
             )}
