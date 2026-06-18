@@ -178,8 +178,10 @@ const EQVisualizer: React.FC<EQVisualizerProps> = ({ bands, width = 600, height 
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
 
+    const isDark = document.documentElement.classList.contains("dark");
+
     // Grid
-    const gridColor = "rgba(255,255,255,0.05)";
+    const gridColor = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)";
     ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     // Horizontal lines at -12, -6, 0, +6, +12 dB
@@ -190,7 +192,7 @@ const EQVisualizer: React.FC<EQVisualizerProps> = ({ bands, width = 600, height 
       ctx.moveTo(0, y);
       ctx.lineTo(W, y);
       ctx.stroke();
-      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      ctx.fillStyle = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.35)";
       ctx.font = "10px Inter, sans-serif";
       ctx.fillText(`${db > 0 ? "+" : ""}${db}dB`, 4, y - 3);
     });
@@ -204,13 +206,13 @@ const EQVisualizer: React.FC<EQVisualizerProps> = ({ bands, width = 600, height 
     };
     freqLabels.forEach((f) => {
       const x = freqToX(f);
-      ctx.strokeStyle = "rgba(255,255,255,0.04)";
+      ctx.strokeStyle = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.05)";
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, H);
       ctx.stroke();
       const label = f >= 1000 ? `${f / 1000}k` : `${f}`;
-      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillStyle = isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.3)";
       ctx.font = "9px Inter, sans-serif";
       ctx.fillText(label, x - 8, H - 4);
     });
@@ -293,7 +295,7 @@ const EQVisualizer: React.FC<EQVisualizerProps> = ({ bands, width = 600, height 
       ctx.arc(x, clamp(y, 8, H - 8), 6, 0, Math.PI * 2);
       ctx.fillStyle = band.color;
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.strokeStyle = isDark ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.25)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
     });
@@ -367,12 +369,12 @@ const BandFader: React.FC<BandFaderProps> = ({ band, onChange }) => {
         ref={trackRef}
         onPointerDown={handlePointerDown}
         className="relative w-8 cursor-ns-resize rounded-full"
-        style={{ height: 140, background: "rgba(255,255,255,0.06)" }}
+        style={{ height: 140, background: "var(--eq-fader-bg)" }}
       >
         {/* Center line */}
         <div
-          className="absolute left-0 right-0 h-px bg-white/20"
-          style={{ top: `${100 - centerPct}%` }}
+          className="absolute left-0 right-0 h-px"
+          style={{ top: `${100 - centerPct}%`, background: "var(--eq-fader-center)" }}
         />
 
         {/* Fill */}
@@ -389,10 +391,10 @@ const BandFader: React.FC<BandFaderProps> = ({ band, onChange }) => {
 
         {/* Thumb */}
         <div
-          className="absolute left-1/2 -translate-x-1/2 w-6 h-4 rounded-md shadow-lg border border-white/20 flex items-center justify-center"
+          className="absolute left-1/2 -translate-x-1/2 w-6 h-4 rounded-md shadow-lg border border-black/10 dark:border-white/20 flex items-center justify-center"
           style={{
             top: `calc(${100 - pct}% - 8px)`,
-            background: band.gain === 0 ? "#334155" : band.color,
+            background: band.gain === 0 ? "var(--eq-fader-thumb-neutral)" : band.color,
             boxShadow: `0 0 12px ${band.color}60`,
           }}
         >
@@ -402,8 +404,8 @@ const BandFader: React.FC<BandFaderProps> = ({ band, onChange }) => {
 
       {/* Freq label */}
       <div className="text-center">
-        <div className="text-[10px] font-bold text-white/80">{band.label}</div>
-        <div className="text-[9px] text-white/30">
+        <div className="text-[10px] font-bold text-slate-700 dark:text-white/80">{band.label}</div>
+        <div className="text-[9px] text-slate-400 dark:text-white/30">
           {band.freq >= 1000 ? `${band.freq / 1000}kHz` : `${band.freq}Hz`}
         </div>
       </div>
@@ -411,10 +413,10 @@ const BandFader: React.FC<BandFaderProps> = ({ band, onChange }) => {
       {/* Reset dot */}
       <button
         onClick={() => onChange(0)}
-        className="w-4 h-4 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center transition-all"
+        className="w-4 h-4 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/15 flex items-center justify-center transition-all"
         title="Reset to 0dB"
       >
-        <RotateCcw className="w-2.5 h-2.5 text-white/30 hover:text-white/70 transition-colors" />
+        <RotateCcw className="w-2.5 h-2.5 text-slate-300 dark:text-white/30 transition-colors" />
       </button>
     </div>
   );
