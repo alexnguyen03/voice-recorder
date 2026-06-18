@@ -134,7 +134,7 @@ const Header: React.FC<HeaderProps> = ({ fileName, onBack }) => (
   <div className="flex items-center gap-3 mb-4">
     <button
       onClick={onBack}
-      className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer transition-colors active:scale-95"
+      className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer transition-colors active:scale-95"
     >
       <ArrowLeft className="w-4 h-4" />
       Back
