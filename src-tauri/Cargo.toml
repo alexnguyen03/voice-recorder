@@ -1,8 +1,8 @@
 [package]
-name = "tauri-app"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+name = "pro-voice-recorder"
+version = "1.0.0"
+description = "Pro Voice Recorder — Record, edit and enhance your audio"
+authors = ["Pro Voice Recorder"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
