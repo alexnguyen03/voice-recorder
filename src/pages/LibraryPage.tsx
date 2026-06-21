@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { FolderOpen, Music, Search, X, Trash2, Clock, Calendar, SlidersHorizontal } from "lucide-react";
+import { FolderOpen, Music, Search, X, Trash2, Check, Clock, Calendar, SlidersHorizontal } from "lucide-react";
 import { AudioService, RecordingInfo } from "../services/audioService";
 
 interface LibraryPageProps {
@@ -36,8 +36,10 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
 }) => {
   const [query,       setQuery]       = useState("");
   const [selected,    setSelected]    = useState<Set<string>>(new Set());
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleting,    setDeleting]    = useState(false);
+  const [confirmOpen,       setConfirmOpen]       = useState(false);
+  const [deleting,          setDeleting]          = useState(false);
+  const [deleteConfirmFile, setDeleteConfirmFile] = useState<string | null>(null);
+  const [deletingSingle,    setDeletingSingle]    = useState(false);
   // Map<path, RecordingInfo>
   const [meta, setMeta] = useState<Map<string, RecordingInfo>>(new Map());
 
@@ -79,8 +81,17 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   }, []);
 
   const handleRowClick = (file: string) => {
+    setDeleteConfirmFile(null);
     if (someSelected || allSelected) toggleRow(file);
     else onSelectFile(file);
+  };
+
+  const handleDeleteSingle = async (file: string) => {
+    setDeletingSingle(true);
+    try { await AudioService.deleteRecording(file); } catch (_) {}
+    setDeletingSingle(false);
+    setDeleteConfirmFile(null);
+    refreshFiles();
   };
 
   const handleConfirmDelete = async () => {
@@ -253,24 +264,67 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Edit in EQ — only visible on hover when NOT in select mode */}
+                  {/* Actions — only visible when NOT in select mode */}
                   {!isSelectMode && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onOpenInEQ(file); }}
-                      title="Edit in Pro EQ"
-                      className="flex-shrink-0 opacity-0 group-hover:opacity-100
-                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
-                        bg-orange-50 hover:bg-orange-100
-                        dark:bg-orange-950/40 dark:hover:bg-orange-900/60
-                        text-orange-500 dark:text-orange-400
-                        text-[11px] font-bold
-                        border border-orange-200 dark:border-orange-700/50
-                        transition-all duration-150 cursor-pointer"
-                      id={`open-eq-${getFileName(file)}`}
-                    >
-                      <SlidersHorizontal className="w-3 h-3" />
-                      EQ
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                      {/* Edit in EQ */}
+                      <button
+                        onClick={() => onOpenInEQ(file)}
+                        title="Edit in Pro EQ"
+                        className="opacity-0 group-hover:opacity-100
+                          flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
+                          bg-orange-50 hover:bg-orange-100
+                          dark:bg-orange-950/40 dark:hover:bg-orange-900/60
+                          text-orange-500 dark:text-orange-400
+                          text-[11px] font-bold
+                          border border-orange-200 dark:border-orange-700/50
+                          transition-all duration-150 cursor-pointer"
+                        id={`open-eq-${getFileName(file)}`}
+                      >
+                        <SlidersHorizontal className="w-3 h-3" />
+                        EQ
+                      </button>
+
+                      {/* Per-row delete */}
+                      {deleteConfirmFile === file ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setDeleteConfirmFile(null)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg
+                              bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600
+                              text-slate-500 dark:text-slate-300 transition-all cursor-pointer active:scale-90"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSingle(file)}
+                            disabled={deletingSingle}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg
+                              bg-rose-600 hover:bg-rose-500 text-white
+                              transition-all cursor-pointer active:scale-90 disabled:opacity-60"
+                          >
+                            {deletingSingle
+                              ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              : <Check className="w-3.5 h-3.5" />
+                            }
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirmFile(file)}
+                          title="Delete recording"
+                          className="opacity-0 group-hover:opacity-100
+                            w-7 h-7 flex items-center justify-center rounded-lg
+                            bg-rose-50 hover:bg-rose-100
+                            dark:bg-rose-950/40 dark:hover:bg-rose-900/60
+                            text-rose-400 dark:text-rose-400
+                            border border-rose-200 dark:border-rose-700/50
+                            transition-all duration-150 cursor-pointer active:scale-90"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               );
