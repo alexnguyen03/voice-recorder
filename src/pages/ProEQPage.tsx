@@ -459,6 +459,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
   const [isExporting, setIsExporting] = useState(false);
   const [exportDone, setExportDone] = useState(false);
   const [settingsVersion, setSettingsVersion] = useState(0);
+  const [isApplyingEQ, setIsApplyingEQ] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Web Audio refs
@@ -814,6 +815,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
     }
 
     let cancelled = false;
+    setIsApplyingEQ(true);
     const timer = window.setTimeout(() => {
       const settings = settingsRef.current;
       renderEqBlob(audioBuffer, settings)
@@ -828,12 +830,16 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
         .catch((err) => {
           console.error("EQ preview render error:", err);
           if (!cancelled) onPreviewUrlChange(null);
+        })
+        .finally(() => {
+          if (!cancelled) setIsApplyingEQ(false);
         });
     }, 250);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      setIsApplyingEQ(false);
     };
   }, [audioBuffer, settingsVersion, onPreviewUrlChange, renderEqBlob]);
 
@@ -894,6 +900,25 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
 
   return (
     <div className="pro-eq-root">
+      {/* ── Export Loading Overlay ── */}
+      {isExporting && (
+        <div className="pro-eq-loading-overlay" aria-label="Applying EQ...">
+          <div className="pro-eq-loading-card">
+            <div className="pro-eq-loading-rings">
+              <div className="pro-eq-loading-ring pro-eq-loading-ring--1" />
+              <div className="pro-eq-loading-ring pro-eq-loading-ring--2" />
+              <div className="pro-eq-loading-ring pro-eq-loading-ring--3" />
+            </div>
+            <p className="pro-eq-loading-title">Applying EQ</p>
+            <p className="pro-eq-loading-sub">Rendering audio with your settings...</p>
+            <div className="pro-eq-loading-bars">
+              {[0,1,2,3,4,5,6].map(i => (
+                <div key={i} className="pro-eq-loading-bar" style={{ animationDelay: `${i * 0.1}s` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {/* ── Header ── */}
       <div className="pro-eq-header">
         <div className="pro-eq-header-glow" />
@@ -1074,9 +1099,17 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
 
         {/* ── EQ Visualizer ── */}
         <section className="pro-eq-section">
-          <h2 className="pro-eq-section-title">
-            <Activity className="w-4 h-4" /> EQ Curve
-          </h2>
+          <div className="pro-eq-viz-header">
+            <h2 className="pro-eq-section-title">
+              <Activity className="w-4 h-4" /> EQ Curve
+            </h2>
+            {isApplyingEQ && audioBuffer && (
+              <div className="pro-eq-applying-badge">
+                <span className="pro-eq-applying-dot" />
+                Applying EQ...
+              </div>
+            )}
+          </div>
           <div className="pro-eq-visualizer-wrap">
             <EQVisualizer bands={bands} height={180} />
           </div>
