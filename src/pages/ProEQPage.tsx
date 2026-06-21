@@ -22,6 +22,7 @@ import {
   X,
   Download,
   CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 
 // ─── EQ Band definitions ─────────────────────────────────────────────────────
@@ -458,6 +459,7 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
   const [effectEnabled, setEffectEnabled] = useState(true);    // EQ bypass toggle
   const [isExporting, setIsExporting] = useState(false);
   const [exportDone, setExportDone] = useState(false);
+  const [exportedPath, setExportedPath] = useState<string | null>(null);
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [isApplyingEQ, setIsApplyingEQ] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -888,9 +890,10 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
       const blob = encodeWAV(rendered);
       const baseName = (audioFile?.name ?? "audio").replace(/\.[^.]+$/, "");
       const wavBytes = new Uint8Array(await blob.arrayBuffer());
-      await AudioService.saveEqExport(`${baseName}_EQ_rendered.wav`, wavBytes);
+      const savedPath = await AudioService.saveEqExport(`${baseName}_EQ_rendered.wav`, wavBytes);
+      setExportedPath(savedPath);
       setExportDone(true);
-      setTimeout(() => setExportDone(false), 3000);
+      setTimeout(() => setExportDone(false), 5000);
     } catch (err) {
       console.error("Export error:", err);
     } finally {
@@ -1052,6 +1055,19 @@ export const ProEQPage: React.FC<ProEQPageProps> = ({ initialAudioPath, onPrevie
                       <><Download className="w-4 h-4" /> Export WAV</>
                     )}
                   </button>
+
+                  {/* Show in Explorer button — appears after successful export */}
+                  {exportDone && exportedPath && (
+                    <button
+                      onClick={() => AudioService.revealInExplorer(exportedPath)}
+                      className="pro-eq-reveal-btn"
+                      title={`Open folder: ${exportedPath}`}
+                      id="eq-reveal-btn"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Show in Explorer
+                    </button>
+                  )}
                 </div>
               )}
             </div>

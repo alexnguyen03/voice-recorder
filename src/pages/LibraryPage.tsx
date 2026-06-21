@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { FolderOpen, Music, Search, X, Trash2, Check, Clock, Calendar, SlidersHorizontal } from "lucide-react";
+import { FolderOpen, Music, Search, X, Trash2, Check, Clock, Calendar, SlidersHorizontal, ExternalLink } from "lucide-react";
 import { AudioService, RecordingInfo } from "../services/audioService";
 
 interface LibraryPageProps {
@@ -283,6 +283,22 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                       >
                         <SlidersHorizontal className="w-3 h-3" />
                         EQ
+                      </button>
+
+                      {/* Show in Explorer */}
+                      <button
+                        onClick={() => AudioService.revealInExplorer(file)}
+                        title="Show in File Explorer"
+                        className="opacity-0 group-hover:opacity-100
+                          w-7 h-7 flex items-center justify-center rounded-lg
+                          bg-sky-50 hover:bg-sky-100
+                          dark:bg-sky-950/40 dark:hover:bg-sky-900/60
+                          text-sky-500 dark:text-sky-400
+                          border border-sky-200 dark:border-sky-700/50
+                          transition-all duration-150 cursor-pointer active:scale-90"
+                        id={`reveal-${getFileName(file)}`}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </button>
 
                       {/* Per-row delete */}

@@ -11,7 +11,7 @@ use commands::{
     get_live_audio_devices, start_live_mic, stop_live_mic, update_live_filters,
     create_preview, load_preview_meta, clear_preview,
     separate_vocals, delete_recording, get_recordings_info,
-    analyze_audio, save_eq_export,
+    analyze_audio, save_eq_export, reveal_in_explorer,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -46,6 +46,7 @@ pub fn run() {
             get_recordings_info,
             analyze_audio,
             save_eq_export,
+            reveal_in_explorer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

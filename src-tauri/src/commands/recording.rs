@@ -244,3 +244,25 @@ pub fn save_eq_export(
 
     Ok(out_path.to_string_lossy().to_string())
 }
+
+/// Reveal a file or folder in the system file explorer (Windows Explorer / Finder).
+/// Highlights the file if it exists; otherwise opens the parent folder.
+#[tauri::command]
+pub fn reveal_in_explorer(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let p = std::path::Path::new(&path);
+
+    // If the path is a file, open its parent directory; Explorer will select it.
+    let target = if p.is_file() {
+        p.parent()
+            .map(|d| d.to_string_lossy().to_string())
+            .unwrap_or(path.clone())
+    } else {
+        path.clone()
+    };
+
+    app.opener()
+        .open_path(target, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+

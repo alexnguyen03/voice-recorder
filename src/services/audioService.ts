@@ -312,4 +312,15 @@ export const AudioService = {
       });
     } catch (e) { throw new Error(String(e)); }
   },
+
+  /**
+   * Reveal a file or folder in the system file explorer (Windows Explorer / Finder).
+   * Opens the parent folder and selects the file if a file path is given.
+   */
+  async revealInExplorer(path: string): Promise<void> {
+    if (!isTauri()) return;
+    try { await invoke("reveal_in_explorer", { path }); }
+    catch (e) { throw new Error(String(e)); }
+  },
 };
+
